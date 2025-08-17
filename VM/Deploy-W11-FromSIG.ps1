@@ -1,3 +1,21 @@
+<#PSScriptInfo
+
+.VERSION        0.1.0
+.GUID           94c392be-bd22-4a55-af15-b4fbba9b9d84
+.AUTHOR         Jörg Brors
+.COMPANYNAME
+.COPYRIGHT      (c) 2025 Jörg Brors. All rights reserved.
+.TAGS           AVD, AzureSharedImageGallery, Windows11, TrustedLaunch, VMDeployment, AcceleratedNetworking, PowerShell
+.LICENSEURI     https://opensource.org/licenses/MIT
+.PROJECTURI     https://github.com/joergbrors/AVD
+.EXTERNALMODULEDEPENDENCIES Az.Accounts, Az.Compute, Az.Network, Az.Resources
+.REQUIREDSCRIPTS
+.EXTERNALSCRIPTDEPENDENCIES
+.DESCRIPTION    Deploy-W11-FromSIG creates and configures a Windows 11 VM from a Shared Image Gallery (SIG) for Azure Virtual Desktop (AVD) with Trusted Launch, Accelerated Networking, Boot Diagnostics, and post-install steps.
+.RELEASENOTES
+    0.1.0 – Initial release of the Deploy-W11-FromSIG script for AVD.
+#>
+
 #Requires -Modules Az.Accounts, Az.Compute, Az.Network, Az.Resources
 <#
 .SYNOPSIS
