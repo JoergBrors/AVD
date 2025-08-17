@@ -118,7 +118,11 @@ param(
     [string]$TimeZone = "W. Europe Standard Time", # Standard-Zeitzone, kann angepasst werden 
 
     # Neuer Switch: MultiSessionHost (Default-Verhalten = $true)
-    [switch]$MultiSessionHost
+    [switch]$MultiSessionHost,
+
+    # Neue Switches: automatische Abschlussaktion ohne interaktiven Prompt
+    [switch]$ForceRestart,
+    [switch]$ForceStop
 )
 
 # Optional: TLS 1.2 erzwingen (hilft bei TLS/Proxy-Problemen unter PS 5.1)
@@ -386,6 +390,11 @@ if ($PSBoundParameters.ContainsKey('MultiSessionHost')) {
     $UseMultiSessionHost = $true
 }
 
+# Validierung: ForceRestart und ForceStop dürfen nicht gleichzeitig gesetzt sein
+if ($ForceRestart -and $ForceStop) {
+    throw "Nur eines von -ForceRestart oder -ForceStop darf gesetzt werden."
+}
+
 Write-Host "================ SUMMARY ================" -ForegroundColor Cyan
 Write-Host "Subscription : $SubscriptionId"
 Write-Host "Region       : $Location"
@@ -405,6 +414,9 @@ Write-Host "NIC Name     : $VmName-nic"
 Write-Host "Security     : $securitySummary"
 Write-Host "Accel. Net   : $enableAccelNet"
 Write-Host "MultiSession : $UseMultiSessionHost"
+# Optional: zeige, ob ForceRestart/ForceStop aktiv sind
+if ($ForceRestart) { Write-Host "FinalAction   : ForceRestart" -ForegroundColor Cyan }
+elseif ($ForceStop) { Write-Host "FinalAction   : ForceStop" -ForegroundColor Cyan }
 Write-Host "Tags         : $(Format-Tags -Tags $Tags)"
 Write-Host "=========================================" -ForegroundColor Cyan
 
@@ -491,6 +503,7 @@ if (-not $SkipBootFix) {
 # Fallback: direktes bcdboot ohne -s
 
 try {
+
     # ESP einhängen
     & mountvol S: /S 2>&1 | Out-Null
 
@@ -520,22 +533,12 @@ Write-Output "EFI-Bootdateien wurden erfolgreich erneuert und Bootmenü bereinig
     $rcRes.Value | ForEach-Object { if ($_.Message) { Write-Host $_.Message } }
     Write-Host "EFI-Bootloader-Reparatur abgeschlossen." -ForegroundColor Green
 
-    # Optionaler Neustart
-    if (-not $Force) {
-        $doReboot = Read-Host "Soll die VM jetzt einmal neu gestartet werden? (Y/N)"
-        if ($doReboot -in @("Y","y","Yes","yes","J","j")) {
-            Restart-AzVM -ResourceGroupName $RgTarget -Name $VmName -NoWait
-            Write-Host "Neustart initiiert." -ForegroundColor Green
-        } else {
-            Write-Host "Neustart übersprungen." -ForegroundColor Yellow
-        }
-    } else {
-        # bei Force keinen Prompt – optional kannst du hier auto-rebooten, ich lasse es neutral
-        Write-Host "Neustart-Prompt übersprungen (Force aktiv)." -ForegroundColor Yellow
-    }
+    # Hinweis: Entscheidung für Neustart/Deallocate wird am Ende des Skripts gestellt.
+    Write-Host "Hinweis: Neustart/Deallocate wird am Ende des Skripts abgefragt." -ForegroundColor Cyan
 } else {
     Write-Host "EFI-Bootloader-Fix übersprungen (SkipBootFix gesetzt)." -ForegroundColor Yellow
 }
+
 # ===========================
 # POST-STEP: Optionales Post-Install Skript auf der VM ausführen
 # Die TimeZone wird in der Remote-Sitzung als Variable $TimeZone gesetzt (String).
@@ -564,5 +567,49 @@ if ($PostInstallScriptPath) {
     }
     catch {
         throw "Fehler beim Ausführen des Post-Install-Skripts: $($_.Exception.Message)"
+    }
+}
+
+# ===========================
+# Finale Aktion: Neustart / Deallocate / Keine Aktion
+# ===========================
+# Priorität:
+# 1) Wenn ForceRestart/ForceStop gesetzt -> führe entsprechende Aktion automatisch aus.
+# 2) Sonst wenn Force gesetzt -> überspringen (keine Aktion).
+# 3) Sonst interaktives Menü.
+
+if ($ForceRestart) {
+    Write-Host "ForceRestart aktiv: Neustart der VM '$VmName' wird initiiert..." -ForegroundColor Cyan
+    Restart-AzVM -ResourceGroupName $RgTarget -Name $VmName -NoWait
+}
+elseif ($ForceStop) {
+    Write-Host "ForceStop aktiv: Deallocate (Stop) der VM '$VmName' wird initiiert..." -ForegroundColor Cyan
+    Stop-AzVM -ResourceGroupName $RgTarget -Name $VmName -Force -NoWait
+}
+elseif ($Force) {
+    Write-Host "Force aktiv: Abschlussaktion wird übersprungen." -ForegroundColor Yellow
+}
+else {
+    Write-Host "" -ForegroundColor Cyan
+    Write-Host "Abschlussaktion wählen:" -ForegroundColor Cyan
+    Write-Host "  [1] Neustart der VM jetzt" -ForegroundColor Cyan
+    Write-Host "  [2] VM deallocaten (Stopp & Deallocate) jetzt" -ForegroundColor Cyan
+    Write-Host "  [3] Keine Aktion (Beenden)  (Enter = 3)" -ForegroundColor Cyan
+
+    $finalChoice = Read-Host "Bitte Nummer wählen"
+    if ([string]::IsNullOrWhiteSpace($finalChoice)) { $finalChoice = "3" }
+
+    switch ($finalChoice) {
+        "1" {
+            Write-Host "Neustart der VM '$VmName' wird initiiert..." -ForegroundColor Cyan
+            Restart-AzVM -ResourceGroupName $RgTarget -Name $VmName -NoWait
+        }
+        "2" {
+            Write-Host "Deallocate der VM '$VmName' wird initiiert..." -ForegroundColor Cyan
+            Stop-AzVM -ResourceGroupName $RgTarget -Name $VmName -Force -NoWait
+        }
+        default {
+            Write-Host "Keine Abschlussaktion ausgeführt." -ForegroundColor Yellow
+        }
     }
 }
