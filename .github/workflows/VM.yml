@@ -1,0 +1,42 @@
+name: Publish PowerShell Script
+
+on:
+  push:
+    tags:
+      - 'v*'   # läuft nur bei Tags wie v1.0.0
+  workflow_dispatch:   # manuell starten möglich
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install PowerShellGet & NuGet
+        shell: pwsh
+        run: |
+          # Erst sicherstellen, dass PackageManagement geladen ist
+          Install-Module -Name PackageManagement -Force -Scope CurrentUser -AllowClobber
+          Import-Module PackageManagement
+
+          # Danach NuGet Provider installieren
+          Get-PackageProvider -Name NuGet -ForceBootstrap -Force
+
+          # PowerShellGet updaten
+          Install-Module -Name PowerShellGet -Force -Scope CurrentUser -AllowClobber
+          Import-Module PowerShellGet
+
+      - name: Validate Script Metadata
+        shell: pwsh
+        run: |
+          Test-ScriptFileInfo -Path ./VM/Deploy-W11-FromSIG.ps1
+
+      - name: Publish to PowerShell Gallery
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          NUGET_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          Publish-Script -Path ./VM/Deploy-W11-FromSIG.ps1 -NuGetApiKey $env:NUGET_KEY -Verbose
