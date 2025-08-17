@@ -91,7 +91,7 @@
       - Proper permissions on target RGs, network and Shared Image Gallery
 
 .AUTHOR
-    Created with assistance from ChatGPT.
+    Jörg Brors with assistance from ChatGPT.
 
 #>
 
