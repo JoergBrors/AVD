@@ -115,7 +115,10 @@ param(
 
     # Neue Parameter für Post-Install Skript & TimeZone
     [string]$PostInstallScriptPath = "",
-    [string]$TimeZone = "W. Europe Standard Time" # Standard-Zeitzone, kann angepasst werden 
+    [string]$TimeZone = "W. Europe Standard Time", # Standard-Zeitzone, kann angepasst werden 
+
+    # Neuer Switch: MultiSessionHost (Default-Verhalten = $true)
+    [switch]$MultiSessionHost
 )
 
 # Optional: TLS 1.2 erzwingen (hilft bei TLS/Proxy-Problemen unter PS 5.1)
@@ -373,6 +376,16 @@ if ($ComputerNameOverride -and ($ComputerNameOverride -ne $ComputerName)) {
 $securitySummary = ""
 if ($EnableTrustedLaunch) { $securitySummary = "TrustedLaunch (SecureBoot + vTPM)" } else { $securitySummary = "Standard (explicit: SecureBoot/vTPM OFF)" }
 
+# Nach Sanitisierung der Namen (oder an einer vergleichbaren Stelle vor Summary) 
+# Bestimme effektiven Wert (Default = $true, sofern der Switch nicht explizit übergeben wurde)
+if ($PSBoundParameters.ContainsKey('MultiSessionHost')) {
+    # Wenn Switch gesetzt wurde, nutze seinen booleschen Wert (z.B. -MultiSessionHost:$false möglich)
+    $UseMultiSessionHost = [bool]$MultiSessionHost
+} else {
+    # Default: true
+    $UseMultiSessionHost = $true
+}
+
 Write-Host "================ SUMMARY ================" -ForegroundColor Cyan
 Write-Host "Subscription : $SubscriptionId"
 Write-Host "Region       : $Location"
@@ -391,6 +404,7 @@ Write-Host "VNet/Subnet  : $($vnet.Name) / $SubnetName (RG: $($vnet.ResourceGrou
 Write-Host "NIC Name     : $VmName-nic"
 Write-Host "Security     : $securitySummary"
 Write-Host "Accel. Net   : $enableAccelNet"
+Write-Host "MultiSession : $UseMultiSessionHost"
 Write-Host "Tags         : $(Format-Tags -Tags $Tags)"
 Write-Host "=========================================" -ForegroundColor Cyan
 
@@ -449,6 +463,23 @@ $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig -Enable
 New-AzVM -ResourceGroupName $RgTarget -Location $Location -VM $vmConfig -Tag $Tags -ErrorAction Stop
 
 Write-Host "VM '$VmName' wurde erfolgreich erstellt. Sicherheitsmodus: $securitySummary | Accelerated Networking: $enableAccelNet" -ForegroundColor Green
+
+
+# Setze LicenseType für Windows 10/11 Multi-Session (erforderlich für Multi-Session-Images)
+try {
+    if ($UseMultiSessionHost) {
+        Write-Host "Setze LicenseType = 'Windows_Client' für VM '$VmName' ..." -ForegroundColor Cyan
+        $vmObj = Get-AzVM -ResourceGroupName $RgTarget -Name $VmName -ErrorAction Stop
+        $vmObj.LicenseType = "Windows_Client"
+        Update-AzVM -ResourceGroupName $RgTarget -VM $vmObj -ErrorAction Stop
+        Write-Host "LicenseType erfolgreich gesetzt." -ForegroundColor Green
+    } else {
+        Write-Host "LicenseType-Update übersprungen (MultiSessionHost deaktiviert)." -ForegroundColor Yellow
+    }
+}
+catch {
+    Write-Warning "Konnte LicenseType nicht setzen: $($_.Exception.Message)"
+}
 
 # ===========================
 # POST-STEP: EFI-Bootloader neu schreiben (einmalig)
