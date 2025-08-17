@@ -19,112 +19,159 @@
 #Requires -Modules Az.Accounts, Az.Compute, Az.Network, Az.Resources
 <#
 .SYNOPSIS
-    Creates a Windows 11 VM from a Shared Image Gallery (SIG) with optional Trusted Launch (Gen2, SecureBoot, vTPM)
-    and performs a one-time EFI bootloader repair via RunCommand.
+    Deploys a Windows 11 virtual machine from a Shared Image Gallery (SIG). Supports Gen2 Trusted Launch
+    (Secure Boot + vTPM), accelerated networking where available, boot diagnostics and a one-time EFI
+    bootloader repair via RunCommand. Includes name sanitization for Windows/NetBIOS constraints and optional
+    post-install script execution.
 
 .DESCRIPTION
-    - Locates the Shared Image Gallery by name within the subscription (or uses the provided resource group).
-    - Lists image definitions and versions (newest first) — can be non-interactive with -ImageDefinitionName/-ImageVersionName.
-      Prefers versions replicated to the target region (TargetRegions).
-    - Deploys the VM with optional Trusted Launch, enables Accelerated Networking if supported,
-      attaches the NIC to the specified VNet/Subnet, and enables Boot Diagnostics.
-    - After deployment: one-time EFI bootloader fix via bcdboot (RunCommand). Suppressible with -SkipBootFix.
-    - Includes a name sanitizer to create valid Windows/NetBIOS names (≤15 chars, allowed characters).
-      Optional -ComputerNameOverride supported.
+    This script automates the creation of a Windows 11 VM sourced from a Shared Image Gallery image version.
+    It will:
+      - Locate the specified Shared Image Gallery (or auto-detect it in the subscription).
+      - Prefer image versions replicated to the target region (TargetRegions).
+      - Optionally operate non-interactively when ImageDefinitionName and ImageVersionName are supplied.
+      - Create the VM (Gen2 when Trusted Launch is enabled), attach to the specified VNet/Subnet, configure
+        NIC/accelerated networking when supported, and enable boot diagnostics.
+      - Optionally perform a one-time EFI bootloader repair using bcdboot via Azure RunCommand (unless skipped).
+      - Optionally run a provided post-install script and set the VM timezone.
+      - Sanitize the provided VM name to comply with Windows computer name and NetBIOS limits (≤15 chars,
+        allowed characters) unless an override is provided.
 
 .PARAMETER SubscriptionId
-    Azure subscription ID.
+    Azure subscription ID to use for the deployment. If not provided, the current subscription context is used.
 
 .PARAMETER Location
-    Target region (e.g. 'westeurope') and used as filter for image TargetRegions.
+    Azure region (e.g. "westeurope") used as the deployment target and for filtering image TargetRegions.
 
 .PARAMETER RgTarget
-    Resource group for VM and NIC.
+    Resource group where the VM, NIC and associated resources will be created. Required for deployment.
 
 .PARAMETER RgNetwork
-    (Optional) Resource group of the VNet; leave empty to search subscription-wide.
+    (Optional) Resource group of the existing virtual network. If omitted, the script will search for the VNet
+    name across the subscription (or use the target RG if appropriate).
 
 .PARAMETER VnetName
-    Name of the virtual network.
+    Name of the virtual network to attach the VM's NIC to.
 
 .PARAMETER SubnetName
-    Name of the subnet.
+    Name of the subnet within the VNet for the NIC.
 
 .PARAMETER VmName
-    Desired base name. Will be sanitized to a valid Windows computername and used as resource/computer name
-    unless overridden.
+    Desired base name for the VM. Will be sanitized and used for resource names and Windows computer name
+    unless ComputerNameOverride is provided.
 
 .PARAMETER ComputerNameOverride
-    Optional explicit Windows computer name (will be sanitized). If empty, the sanitized VmName is used.
+    Optional explicit Windows computer name. Will be sanitized to valid Windows/NetBIOS form. If omitted the
+    sanitized VmName is used.
 
 .PARAMETER VmSize
-    VM size (e.g. 'Standard_D8ds_v5').
+    VM size to deploy (for example "Standard_D8ds_v5"). Must be supported in the target region. Trusted Launch
+    and accelerated networking capabilities depend on the chosen size.
 
 .PARAMETER Tags
-    Hashtable of tags to apply to VM and NIC.
+    Hashtable of tags to apply to the VM and NIC (e.g. @{ Owner = 'Alice'; Project = 'Test' }).
 
 .PARAMETER GalleryResourceGroup
-    Resource group of the Shared Image Gallery. Leave empty to auto-detect.
+    (Optional) Resource group of the Shared Image Gallery. If not supplied, the gallery will be searched for
+    across the subscription by name.
 
 .PARAMETER GalleryName
-    Name of the Shared Image Gallery.
+    Name of the Shared Image Gallery containing the desired image definitions and versions.
 
 .PARAMETER ImageDefinitionName
-    Optional: select exact image definition (non-interactive).
+    (Optional) Exact image definition name to select non-interactively. When supplied, the script will not prompt
+    to choose a definition.
 
 .PARAMETER ImageVersionName
-    Optional: select exact image version (non-interactive). Must match the definition.
+    (Optional) Exact image version name (must correspond to the chosen ImageDefinitionName) for non-interactive use.
 
 .PARAMETER EnableTrustedLaunch
-    Boolean to enable Trusted Launch (Gen2, SecureBoot, vTPM). Default: $true.
+    Switch or boolean to enable Trusted Launch (Gen2 VM with Secure Boot and vTPM). Default: $true.
+    Set to $false to create a Gen1 (legacy BIOS) VM when the image supports it.
 
 .PARAMETER AdminCredential
-    PSCredential for the local admin of the new VM. If omitted, the script will prompt.
+    PSCredential object for the local administrator account on the new VM. If omitted, the script will prompt
+    for credentials.
 
 .PARAMETER SkipBootFix
-    Suppress the post-deployment EFI bootloader repair (bcdboot).
+    Switch to suppress the post-deployment EFI bootloader repair (bcdboot). Use when the image does not require it.
 
 .PARAMETER Force
-    Skip the interactive confirmation before creating the VM.
+    Skip interactive confirmation prompts before creating the VM. Useful for automation.
 
 .PARAMETER PostInstallScriptPath
-    Optional path to a script to run on the VM after timezone is set.
+    Path to an optional script that will be uploaded and executed on the VM after the timezone is configured.
 
 .PARAMETER TimeZone
-    Time zone ID to set on the VM (default: "W. Europe Standard Time").
+    Time zone ID to set on the VM prior to running post-install tasks. Default: "W. Europe Standard Time".
 
 .PARAMETER MultiSessionHost
-    Switch: treat VM as multi-session host (default behavior = true).
+    Switch indicating the VM should be prepared as a multi-session host. Default behavior = $true (treat as multi-session).
 
 .PARAMETER ForceRestart
-    Switch: automatically restart the VM at the end (no prompt).
+    Switch to automatically restart the VM at the end of the script execution without prompting.
 
 .PARAMETER ForceStop
-    Switch: automatically stop/deallocate the VM at the end (no prompt).
+    Switch to automatically stop/deallocate the VM at the end of the script execution without prompting.
+
+.EXAMPLE
+    # Non-interactive: specify gallery, image definition and image version, provide credentials and tags
+    $cred = Get-Credential
+    .\Deploy-W11-FromSIG.ps1 -SubscriptionId "00000000-0000-0000-0000-000000000000" `
+        -Location "westeurope" -RgTarget "rg-vm" -VnetName "prod-vnet" -SubnetName "snet-app" `
+        -VmName "W11-APP-01" -ImageDefinitionName "win11-enterprise" -ImageVersionName "1.2.0" `
+        -VmSize "Standard_D8ds_v5" -AdminCredential $cred -Tags @{Project='Demo'} -Force
+
+.EXAMPLE
+    # Interactive: auto-detect gallery, choose definition/version via prompts, use Trusted Launch (default)
+    .\Deploy-W11-FromSIG.ps1 -SubscriptionId "00000000-0000-0000-0000-000000000000" `
+        -Location "westeurope" -RgTarget "rg-vm" -VnetName "prod-vnet" -SubnetName "snet-app" -VmName "W11-INT-01"
+
+.EXAMPLE
+    # Disable Trusted Launch and skip the EFI boot fix (for images that don't require it)
+    .\Deploy-W11-FromSIG.ps1 -SubscriptionId "..." -Location "westeurope" -RgTarget "rg-vm" `
+        -VnetName "vnet1" -SubnetName "snet1" -VmName "W11-NoTL" -EnableTrustedLaunch $false -SkipBootFix -Force
+
+.EXAMPLE
+    # Provide an explicit, sanitized computer name, run a post-install script and restart automatically
+    $cred = Get-Credential
+    .\Deploy-W11-FromSIG.ps1 -SubscriptionId "..." -Location "westeurope" -RgTarget "rg-vm" `
+        -VnetName "vnet1" -SubnetName "snet1" -VmName "base-name" -ComputerNameOverride "DESKTOP01" `
+        -AdminCredential $cred -PostInstallScriptPath "C:\scripts\setup-roles.ps1" -ForceRestart -Force
+
+.INPUTS
+    None from the pipeline. Parameters accept strings, hashtables and PSCredential objects.
+
+.OUTPUTS
+    Writes details of the created Azure resources to the host and returns the VM representation returned by
+    the Az.Compute creation call (PS custom/VM object). Additional information may be written to verbose/debug
+    streams.
 
 .NOTES
-    Requirements:
-      - Windows PowerShell 5.1
-      - Az modules: Az.Accounts, Az.Compute, Az.Network, Az.Resources
-      - Proper permissions on target RGs, network and Shared Image Gallery
+    - Requirements:
+        * Windows PowerShell 5.1 (the script uses modules compatible with PowerShell 5.1).
+        * Az modules installed and authenticated: Az.Accounts, Az.Compute, Az.Network, Az.Resources.
+        * Sufficient RBAC permissions to read Shared Image Gallery contents and create NICs, VMs, public IPs
+          and diagnostic storage in the target subscription/resource groups.
+    - Trusted Launch requires a Gen2-capable image and supported VM sizes and regions. If enabled, the VM will
+      be deployed as Generation 2 with Secure Boot and vTPM.
+    - Accelerated Networking (ENA) will be enabled only if both the VM size and the target NIC/region support it.
+    - The script performs a one-time bootloader repair using bcdboot via Azure RunCommand to fix EFI boot issues
+      for some SIG-to-VM scenarios; this can be suppressed with -SkipBootFix.
+    - The script sanitizes names to conform to Windows computer name and NetBIOS limits (no more than 15 characters,
+      allowed characters), and fails early if a usable name cannot be derived.
+    - If using PostInstallScriptPath, ensure the script is accessible from the machine running this deployment and
+      that the VM's RunCommand execution policy and prerequisites are satisfied.
+
+.LINK
+    https://learn.microsoft.com/azure/virtual-machines/
+    https://learn.microsoft.com/azure/virtual-machines/trusted-launch
+    https://learn.microsoft.com/azure/virtual-machines/windows/shared-images
 
 .AUTHOR
-    Jörg Brors with assistance from ChatGPT.
-
+    Jörg Brors
+    (Documentation and enhancements assisted by GitHub Copilot)
 #>
-
-param(
-    [string]$SubscriptionId      = "your-subscription-id-here",  # Replace with your subscription ID
-    [string]$Location            = "westeurope",
-
-    [string]$RgTarget            = "your-target-rg-here",
-    [string]$RgNetwork           = "",
-
-    [string]$VnetName            = "your-vnet-name-here",
-    [string]$SubnetName          = "your-subnet-name-here",
-
-    [string]$VmName              = "your-vm-name-here",
-    [string]$ComputerNameOverride = "",
 
     [string]$VmSize              = "Standard_D8ds_v5",
 
