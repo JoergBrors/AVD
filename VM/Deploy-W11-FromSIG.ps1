@@ -111,7 +111,11 @@ param(
     [System.Management.Automation.PSCredential]$AdminCredential,
 
     [switch]$SkipBootFix,
-    [switch]$Force
+    [switch]$Force,
+
+    # Neue Parameter für Post-Install Skript & TimeZone
+    [string]$PostInstallScriptPath = "",
+    [string]$TimeZone = "W. Europe Standard Time" # Standard-Zeitzone, kann angepasst werden 
 )
 
 # Optional: TLS 1.2 erzwingen (hilft bei TLS/Proxy-Problemen unter PS 5.1)
@@ -500,4 +504,34 @@ Write-Output "EFI-Bootdateien wurden erfolgreich erneuert und Bootmenü bereinig
     }
 } else {
     Write-Host "EFI-Bootloader-Fix übersprungen (SkipBootFix gesetzt)." -ForegroundColor Yellow
+}
+# ===========================
+# POST-STEP: Optionales Post-Install Skript auf der VM ausführen
+# Die TimeZone wird in der Remote-Sitzung als Variable $TimeZone gesetzt (String).
+# ===========================
+if ($PostInstallScriptPath) {
+    if (-not (Test-Path -Path $PostInstallScriptPath -PathType Leaf)) {
+        throw "PostInstallScript '$PostInstallScriptPath' wurde nicht gefunden."
+    }
+
+    Write-Host "Bereite Ausführung von Post-Install-Skript vor: $PostInstallScriptPath" -ForegroundColor Cyan
+
+    try {
+        $scriptContent = Get-Content -Path $PostInstallScriptPath -Raw -ErrorAction Stop
+        # Escape single quotes, dann injizieren wir die TimeZone-Variable vorneweg
+        $tzEscaped = $TimeZone -replace "'", "''"
+        $injection = "$TimeZone = '$tzEscaped'`r`n"
+        $fullScriptText = $injection + $scriptContent
+
+        # Invoke-AzVMRunCommand erwartet eine string[] (ScriptString). Splitten nach Zeilen.
+        $scriptLines = $fullScriptText -split "`r?`n"
+
+        Write-Host "Sende Skript an VM '$VmName' und führe es aus..." -ForegroundColor Cyan
+        $res = Invoke-AzVMRunCommand -ResourceGroupName $RgTarget -Name $VmName -CommandId 'RunPowerShellScript' -ScriptString $scriptLines -ErrorAction Stop
+        $res.Value | ForEach-Object { if ($_.Message) { Write-Host $_.Message } }
+        Write-Host "Post-Install-Skript wurde auf VM '$VmName' ausgeführt." -ForegroundColor Green
+    }
+    catch {
+        throw "Fehler beim Ausführen des Post-Install-Skripts: $($_.Exception.Message)"
+    }
 }
