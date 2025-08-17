@@ -1,19 +1,19 @@
 <#PSScriptInfo
 .VERSION        0.1.0
 .GUID           94c392be-bd22-4a55-af15-b4fbba9b9d84
-.AUTHOR         "Jörg Brors"
-.COMPANYNAME    "Jörg Brors" 
-.COPYRIGHT      "(c) 2025 Jörg Brors. All rights reserved."
-.TAGS           "AVD","AzureSharedImageGallery","Windows11","TrustedLaunch","VMDeployment","AcceleratedNetworking","PowerShell"
-.LICENSEURI     "https://opensource.org/licenses/MIT"
-.PROJECTURI     "https://github.com/joergbrors/AVD"
-.ICONURI        "https://raw.githubusercontent.com/joergbrors/AVD/main/icon.png"
-.EXTERNALMODULEDEPENDENCIES "Az.Accounts","Az.Compute","Az.Network","Az.Resources"
+.AUTHOR         Jörg Brors
+.COMPANYNAME    
+.COPYRIGHT      (c) 2025 Jörg Brors. All rights reserved.
+.TAGS           AVD,AzureSharedImageGallery,Windows11,TrustedLaunch,VMDeployment,AcceleratedNetworking,PowerShell
+.LICENSEURI     https://opensource.org/licenses/MIT
+.PROJECTURI     https://github.com/joergbrors/AVD
+.ICONURI        
+.EXTERNALMODULEDEPENDENCIES Az.Accounts,Az.Compute,Az.Network,Az.Resources
 .REQUIREDSCRIPTS
 .EXTERNALSCRIPTDEPENDENCIES
-.DESCRIPTION    "Deploy-W11-FromSIG creates and configures a Windows 11 VM from a Shared Image Gallery (SIG) for Azure Virtual Desktop (AVD) with Trusted Launch and optional post-install steps."
+.DESCRIPTION    Deploy-W11-FromSIG creates and configures a Windows 11 VM from a Shared Image Gallery (SIG) for Azure Virtual Desktop (AVD) with Trusted Launch and optional post-install steps.
 .RELEASENOTES
-    "0.1.0 - Initial release (created with assistance from ChatGPT)."
+    0.1.0 - Initial release (created with assistance from ChatGPT).
 #>
 #Requires -Modules Az.Accounts, Az.Compute, Az.Network, Az.Resources
 <#
@@ -172,41 +172,41 @@
     (Documentation and enhancements assisted by GitHub Copilot)
 #>
 param (
-    [string]$SubscriptionId           = "<your-subscription-id-here>"
-    [string]$Location                 = "westeurope"
-    [string]$RgTarget                 = "rg-vm"
-    [string]$RgNetwork                = "<your-rg-network-here>"
-    [string]$VnetName                 = "<your-vnet-name-here>"
-    [string]$SubnetName               = "<your-subnet-name-here>"
-    [string]$VmName                   = "<your-vm-name-here>"
-    [string]$ComputerNameOverride     = ""
+    [string]$SubscriptionId           = "<your-subscription-id-here>",
+    [string]$Location                 = "westeurope",
+    [string]$RgTarget                 = "rg-vm",
+    [string]$RgNetwork                = "<your-rg-network-here>",
+    [string]$VnetName                 = "<your-vnet-name-here>",
+    [string]$SubnetName               = "<your-subnet-name-here>",
+    [string]$VmName                   = "<your-vm-name-here>",
+    [string]$ComputerNameOverride     = "",
 
-    [string]$VmSize                     = "Standard_D8ds_v5"
+    [string]$VmSize                     = "Standard_D8ds_v5",
 
-    [hashtable]$Tags                    = @{ "Workload"="AVD"; "Stage"="GoldImage"; "Usage"="PROD" }
+    [hashtable]$Tags                    = @{ "Workload"="AVD"; "Stage"="GoldImage"; "Usage"="PROD" },
 
-    [string]$GalleryResourceGroup       = ""
-    [string]$GalleryName                = "your-gallery-name-here"
+    [string]$GalleryResourceGroup       = "",
+    [string]$GalleryName                = "your-gallery-name-here",
 
-    [string]$ImageDefinitionName  = ""
-    [string]$ImageVersionName     = ""
+    [string]$ImageDefinitionName  = "",
+    [string]$ImageVersionName     = "",
 
-    [bool]$EnableTrustedLaunch    = $true
+    [bool]$EnableTrustedLaunch    = $true,
 
-    [System.Management.Automation.PSCredential]$AdminCredential
+    [System.Management.Automation.PSCredential]$AdminCredential,
 
-    [switch]$SkipBootFix
-    [switch]$Force
+    [switch]$SkipBootFix,
+    [switch]$Force,
 
     # New parameters for post-install script & time zone
-    [string]$PostInstallScriptPath = ""
-    [string]$TimeZone = "W. Europe Standard Time" # Default time zone, can be adjusted 
+    [string]$PostInstallScriptPath = "",
+    [string]$TimeZone = "W. Europe Standard Time", # Default time zone, can be adjusted 
 
     # New switch: MultiSessionHost (default behavior = $true)
-    [switch]$MultiSessionHost
+    [switch]$MultiSessionHost,
 
     # New switches: automatic final action without interactive prompt
-    [switch]$ForceRestart
+    [switch]$ForceRestart,
     [switch]$ForceStop
 )
 
