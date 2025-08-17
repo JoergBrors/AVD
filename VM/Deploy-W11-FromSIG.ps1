@@ -540,6 +540,33 @@ Write-Output "EFI-Bootdateien wurden erfolgreich erneuert und Bootmenü bereinig
 }
 
 # ===========================
+# Set TimeZone on the VM (immer, auch wenn kein Post-Install Skript angegeben)
+# ===========================
+try {
+    Write-Host "Setze Zeitzone auf VM '$VmName' auf '$TimeZone' ..." -ForegroundColor Cyan
+
+    $tzScript = @"
+try {
+    Set-TimeZone -Id '$TimeZone'
+    Write-Output "TimeZone gesetzt: $TimeZone"
+} catch {
+    Write-Error "Fehler beim Setzen der Zeitzone: $($_.Exception.Message)"
+    exit 1
+}
+"@
+
+    # Invoke-AzVMRunCommand erwartet eine string[] (ScriptString)
+    $tzLines = $tzScript -split "`r?`n"
+
+    $tzRes = Invoke-AzVMRunCommand -ResourceGroupName $RgTarget -Name $VmName -CommandId 'RunPowerShellScript' -ScriptString $tzLines -ErrorAction Stop
+    $tzRes.Value | ForEach-Object { if ($_.Message) { Write-Host $_.Message } }
+    Write-Host "Zeitzone wurde auf VM '$VmName' gesetzt." -ForegroundColor Green
+}
+catch {
+    Write-Warning "Konnte Zeitzone nicht via RunCommand setzen: $($_.Exception.Message)"
+}
+
+# ===========================
 # POST-STEP: Optionales Post-Install Skript auf der VM ausführen
 # Die TimeZone wird in der Remote-Sitzung als Variable $TimeZone gesetzt (String).
 # ===========================
@@ -551,17 +578,17 @@ if ($PostInstallScriptPath) {
     Write-Host "Bereite Ausführung von Post-Install-Skript vor: $PostInstallScriptPath" -ForegroundColor Cyan
 
     try {
-        $scriptContent = Get-Content -Path $PostInstallScriptPath -Raw -ErrorAction Stop
-        # Escape single quotes, dann injizieren wir die TimeZone-Variable vorneweg
-        $tzEscaped = $TimeZone -replace "'", "''"
-        $injection = "$TimeZone = '$tzEscaped'`r`n"
-        $fullScriptText = $injection + $scriptContent
-
-        # Invoke-AzVMRunCommand erwartet eine string[] (ScriptString). Splitten nach Zeilen.
-        $scriptLines = $fullScriptText -split "`r?`n"
+        # Skript als Array von Zeilen lesen
+        $scriptLines = Get-Content -Path $PostInstallScriptPath -ErrorAction Stop
 
         Write-Host "Sende Skript an VM '$VmName' und führe es aus..." -ForegroundColor Cyan
-        $res = Invoke-AzVMRunCommand -ResourceGroupName $RgTarget -Name $VmName -CommandId 'RunPowerShellScript' -ScriptString $scriptLines -ErrorAction Stop
+        $res = Invoke-AzVMRunCommand `
+            -ResourceGroupName $RgTarget `
+            -Name $VmName `
+            -CommandId 'RunPowerShellScript' `
+            -ScriptString $scriptLines `
+            -ErrorAction Stop
+
         $res.Value | ForEach-Object { if ($_.Message) { Write-Host $_.Message } }
         Write-Host "Post-Install-Skript wurde auf VM '$VmName' ausgeführt." -ForegroundColor Green
     }
