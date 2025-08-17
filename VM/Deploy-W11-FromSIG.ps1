@@ -557,17 +557,15 @@ try {
     $tzScript = @"
 try {
     Set-TimeZone -Id '$TimeZone'
-    Write-Output "Time zone set: $TimeZone"
+    Write-Output 'Time zone set: $TimeZone'
 } catch {
     Write-Error "Error setting time zone: $($_.Exception.Message)"
     exit 1
 }
 "@
 
-    # Invoke-AzVMRunCommand erwartet eine string[] (ScriptString)
-    $tzLines = $tzScript -split "`r?`n"
-
-    $tzRes = Invoke-AzVMRunCommand -ResourceGroupName $RgTarget -Name $VmName -CommandId 'RunPowerShellScript' -ScriptString $tzLines -ErrorAction Stop
+    # Pass a single string to -ScriptString (some Az versions require a string, not string[])
+    $tzRes = Invoke-AzVMRunCommand -ResourceGroupName $RgTarget -Name $VmName -CommandId 'RunPowerShellScript' -ScriptString $tzScript -ErrorAction Stop
     $tzRes.Value | ForEach-Object { if ($_.Message) { Write-Host $_.Message } }
     Write-Host "Time zone was set on VM '$VmName'." -ForegroundColor Green
 }
@@ -587,15 +585,20 @@ if ($PostInstallScriptPath) {
     Write-Host "Preparing to execute post-install script: $PostInstallScriptPath" -ForegroundColor Cyan
 
     try {
-        # Read script as array of lines
-        $scriptLines = Get-Content -Path $PostInstallScriptPath -ErrorAction Stop
+        # Read whole script as single string so we can inject the TimeZone var and pass one string to RunCommand
+        $scriptContent = Get-Content -Path $PostInstallScriptPath -Raw -ErrorAction Stop
+
+        # Escape single quotes in the TimeZone value and inject a variable declaration at the top
+        $tzEscaped = $TimeZone -replace "'", "''"
+        $injection = "`$TimeZone = '$tzEscaped'`r`n"
+        $fullScriptText = $injection + $scriptContent
 
         Write-Host "Sending script to VM '$VmName' and executing it..." -ForegroundColor Cyan
         $res = Invoke-AzVMRunCommand `
             -ResourceGroupName $RgTarget `
             -Name $VmName `
             -CommandId 'RunPowerShellScript' `
-            -ScriptString $scriptLines `
+            -ScriptString $fullScriptText `
             -ErrorAction Stop
 
         $res.Value | ForEach-Object { if ($_.Message) { Write-Host $_.Message } }
