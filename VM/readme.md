@@ -1,9 +1,10 @@
 # Azure Virtual Desktop – Golden Image Pipeline (Windows 11, SIG)
 
-This repository contains two PowerShell scripts that implement a **complete, non-destructive image lifecycle** for **Windows 11 Azure Virtual Desktop (AVD)**:
+This repository contains PowerShell scripts that implement a **complete, non-destructive image lifecycle** for **Windows 11 Azure Virtual Desktop (AVD)**:
 
 1. **`Publish-GalleryVersionFromGoldenVM.ps1`** — Create a new **Azure Compute Gallery (SIG)** image **version** from an existing Golden Image VM.  
-2. **`Deploy-W11-FromSIG.ps1`** — Deploy a **VM from a SIG version**, including **Trusted Launch**, **Secure Boot**, **vTPM**, **optional EFI boot fix**, and **optional post‑install** steps (matches your PSScriptInfo block).
+2. **`Deploy-W11-FromSIG.ps1`** — Deploy a **VM from a SIG version**, including **Trusted Launch**, **Secure Boot**, **vTPM**, **optional EFI boot fix**, and **optional post‑install** steps.
+3. **`Get-OldProfiles.ps1`** — Analyze local Windows user profiles and map them against Active Directory for cleanup and maintenance.
 
 > **Non‑destructive:** The Golden Image VM remains **untouched**. All work happens on a snapshot clone (staging).
 
@@ -20,19 +21,8 @@ This repository contains two PowerShell scripts that implement a **complete, non
 - [Quickstart – End-to-End](#quickstart--end-to-end)
 - [Architecture & Flows (Mermaid)](#architecture--flows-mermaid)
 - [Script 1: Publish-GalleryVersionFromGoldenVM.ps1](#script-1-publish-galleryversionfromgoldenvmps1)
-  - [Purpose](#purpose)
-  - [Key Parameters](#key-parameters)
-  - [Examples](#examples)
-  - [Outputs](#outputs)
-  - [Cleanup](#cleanup)
-  - [Edge Cases](#edge-cases)
 - [Script 2: Deploy-W11-FromSIG.ps1](#script-2-deploy-w11-fromsigps1)
-  - [PSScriptInfo](#psscriptinfo)
-  - [Core Features](#core-features)
-  - [Key Parameters](#key-parameters-1)
-  - [Examples](#examples-1)
-  - [EFI Boot Fix](#efi-boot-fix)
-  - [Multi-Session (AVD)](#multi-session-avd)
+- [Script 3: Get-OldProfiles.ps1](#script-3-get-oldprofilesps1)
 - [Naming & Tagging Conventions](#naming--tagging-conventions)
 - [Operations & AVD Integration (VMSS/Hostpool)](#operations--avd-integration-vmsshostpool)
 - [Troubleshooting](#troubleshooting)
@@ -54,6 +44,7 @@ This repository contains two PowerShell scripts that implement a **complete, non
 - Honors **Trusted Launch / Gen2 / vTPM / Secure Boot**  
 - Efficient **SIG replication** (configurable **Storage Tier** & **ReplicaCount**)  
 - Rapid **VM deployment** from SIG versions with optional **EFI bootloader repair** and **post‑install**
+- **Profile management** and cleanup for AVD session hosts
 
 ---
 
@@ -62,7 +53,8 @@ This repository contains two PowerShell scripts that implement a **complete, non
 ```
 .
 ├─ Publish-GalleryVersionFromGoldenVM.ps1   # Golden VM → Managed Image → SIG Version
-└─ Deploy-W11-FromSIG.ps1                   # SIG Version → VM (Trusted Launch, Post-Install, EFI Fix)
+├─ Deploy-W11-FromSIG.ps1                   # SIG Version → VM (Trusted Launch, Post-Install, EFI Fix)
+└─ Get-OldProfiles.ps1                      # Profile Analysis & AD Mapping for Cleanup
 ```
 
 ---
@@ -73,6 +65,7 @@ This repository contains two PowerShell scripts that implement a **complete, non
 - Roll out **new SIG versions** across regions  
 - Deploy **test/pilot VMs** with automated **post-install** (scripts, timezone)  
 - **Image hygiene**: quick, safe iteration without breaking the Golden Image
+- **Profile maintenance**: identify and clean up old/unused user profiles on AVD hosts
 
 ---
 
@@ -83,6 +76,7 @@ This repository contains two PowerShell scripts that implement a **complete, non
 - Golden Image VM: **Windows** with **Azure VM Agent** installed  
 - Existing **VNet/Subnet** for the staging VM (**no Public IP required**)  
 - An **Azure Compute Gallery (SIG)** exists or will be created interactively/automatically
+- **Domain-joined environment** for profile analysis (Get-OldProfiles.ps1)
 
 ---
 
@@ -94,6 +88,7 @@ This repository contains two PowerShell scripts that implement a **complete, non
 | Staging RG            | Virtual Machine Contributor, Contributor | Create **staging VM**, NIC, disk, snapshot, managed image |
 | Gallery RG            | Compute Gallery Contributor          | Create/read **image definitions** & **versions**       |
 | Network (VNet/Subnet) | Network Contributor                  | Create NIC and attach to **subnet**                    |
+| AVD Session Hosts     | Local Administrator                  | Profile analysis and cleanup operations                |
 
 > Follow **least privilege**. Use **Service Principal**, store secrets/certs in **Key Vault**.
 
@@ -138,6 +133,11 @@ $cred = Get-Credential
   -GalleryName "sig-prod" -GalleryResourceGroup "RG-Gallery" `
   -ImageDefinitionName "W11-AVD" -ImageVersionName "2025.08.18" `
   -VmSize "Standard_D8ds_v5" -AdminCredential $cred -Force
+```
+
+### 3) Analyze Old Profiles
+```powershell
+.\Get-OldProfiles.ps1 -Days 180 -OnlyDisabled
 ```
 
 ---
@@ -319,6 +319,118 @@ $cred = Get-Credential
 
 ---
 
+## Script 3: Get-OldProfiles.ps1
+
+### Purpose
+Analyzes local Windows user profiles on AVD session hosts and maps them against Active Directory to identify old, unused profiles for cleanup. **No RSAT required** - uses .NET DirectoryServices for AD queries.
+
+### Core Features
+- **Profile Discovery**: Scans `C:\Users\*` for local user profiles
+- **AD Integration**: Maps profiles to AD users via SID lookup across all domain controllers
+- **Registry Analysis**: Reads ProfileList registry keys including load/unload timestamps
+- **Smart Filtering**: Excludes system profiles (Default, Public, Administrator)
+- **Flexible Reporting**: Full report or candidates-only output
+- **CSV Export**: Optional export for further analysis
+- **Time Calculation**: Shows days since last effective logon
+
+### Key Parameters
+
+| Parameter                | Type      | Default | Description                                           |
+|--------------------------|-----------|---------|-------------------------------------------------------|
+| `-Days`                  | int       | 360     | Threshold in days for "old" profiles                 |
+| `-OnlyDisabled`          | switch    | -       | Only show profiles for disabled AD accounts          |
+| `-ShowCandidatesOnly`    | switch    | -       | Show only old profiles (skip full report)            |
+| `-ExportCsv`             | switch    | -       | Export results to CSV files                          |
+| `-CsvBasePath`           | string    | `.\ProfileLogonReport` | Base path for CSV exports           |
+| `-ExcludePathPatterns`   | string[]  | System profiles | Regex patterns to exclude            |
+
+### Examples
+
+**Basic usage - find profiles older than 360 days:**
+```powershell
+.\Get-OldProfiles.ps1
+```
+
+**Find old profiles for disabled users only:**
+```powershell
+.\Get-OldProfiles.ps1 -Days 180 -OnlyDisabled -ShowCandidatesOnly
+```
+
+**Full analysis with CSV export:**
+```powershell
+.\Get-OldProfiles.ps1 -Days 90 -ExportCsv -Verbose
+```
+
+**Custom exclusion patterns:**
+```powershell
+.\Get-OldProfiles.ps1 -Days 30 -ExcludePathPatterns @(
+    '\\(Default|Public|Administrator)(\.|\\|$)',
+    '\\(test|temp).*'
+) -ShowCandidatesOnly
+```
+
+### Registry Data Analysis
+The script reads detailed registry information from `HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\<SID>`:
+
+- **ProfileImagePath**: Full path to profile directory
+- **Guid**: Profile GUID
+- **Flags/State**: Profile status flags
+- **FullProfile**: Whether it's a complete profile
+- **LoadTime/UnloadTime**: Precise timestamps of last profile load/unload
+
+### AD Integration Details
+- **Multi-DC Query**: Searches all domain controllers for user information
+- **LastLogon Aggregation**: Combines `lastLogonTimestamp` (replicated) and `lastLogon` (per-DC)
+- **Account Status**: Determines if AD account is enabled/disabled
+- **No RSAT Dependency**: Uses .NET `System.DirectoryServices` classes
+
+### Output Fields
+
+**Full Report includes:**
+- Profile path, username, SID
+- AD account information (SAM, DN, enabled status)
+- Effective last logon (maximum across all DCs)
+- Days since last logon
+- Registry profile metadata
+- Load/unload timestamps
+
+**Candidates Report focuses on:**
+- Profiles exceeding the day threshold  
+- Optional filtering for disabled accounts only
+- Sorted by days since last logon (oldest first)
+
+### Integration with AVD Operations
+
+**Session Host Maintenance:**
+```powershell
+# Run on each AVD session host during maintenance window
+Invoke-Command -ComputerName $AvdHosts -ScriptBlock {
+    .\Get-OldProfiles.ps1 -Days 180 -OnlyDisabled -ExportCsv
+}
+```
+
+**Automated Cleanup Pipeline:**
+```powershell
+# Identify candidates
+$oldProfiles = .\Get-OldProfiles.ps1 -Days 360 -OnlyDisabled -ShowCandidatesOnly
+
+# Review and approve cleanup
+$oldProfiles | Out-GridView -Title "Select profiles to remove" -PassThru | 
+    ForEach-Object { 
+        Write-Host "Would remove: $($_.LocalPath)" -ForegroundColor Yellow
+        # Add actual cleanup logic here
+    }
+```
+
+### Safety Considerations
+- **Always test** profile removal in non-production first
+- **Verify AD status** before removing profiles
+- **Backup critical profiles** before cleanup
+- **Consider FSLogix** profile redirection in AVD environments
+- **Check for active sessions** before profile operations
+
+---
+
 ## Naming & Tagging Conventions
 
 **VM/Computer name**  
@@ -357,7 +469,13 @@ $cred = Get-Credential
 - Keep default (EFI fix **enabled**)  
 - If you customize bootloader: use `-SkipBootFix`
 
-**SIG replication slow / “Not replicated”**
+**Profile analysis issues (Get-OldProfiles.ps1)**
+- **Domain connectivity**: Ensure machine can reach domain controllers
+- **WMI access**: Script requires local WMI queries for Win32_UserProfile
+- **Registry permissions**: Needs read access to ProfileList registry keys
+- **Large profiles**: Consider timeout adjustments for environments with many profiles
+
+**SIG replication slow / "Not replicated"**
 ```powershell
 Get-AzGalleryImageVersion `
   -ResourceGroupName <RG> -GalleryName <SIG> `
@@ -488,6 +606,15 @@ Use `Get-AzGalleryImageVersion` and inspect `PublishingProfile`.
 **What if Sysprep runs forever?**  
 Check logs, remove problematic apps, stop services, and retry.
 
+**Can I use Get-OldProfiles.ps1 without domain connectivity?**  
+No. The script requires domain connectivity to map profiles to AD accounts.
+
+**How accurate is the last logon data?**  
+The script combines `lastLogonTimestamp` (replicated, ~14 days delay) with `lastLogon` (immediate, per-DC) for maximum accuracy.
+
+**Should I delete profiles immediately after running Get-OldProfiles.ps1?**  
+No. Always review the output, verify business requirements, and test in non-production first.
+
 ---
 
 ## License & Credits
@@ -510,7 +637,7 @@ Check logs, remove problematic apps, stop services, and retry.
 - `-TargetRegions`, `-ReplicaCount`, `-StorageAccountType`, `-ExcludeFromLatest`, `-EndOfLife`  
 - `-CleanUp`
 
-### `Deploy-W11-FromSIG.ps1` (excerpt, matches your PSScriptInfo)
+### `Deploy-W11-FromSIG.ps1` (excerpt)
 - `-SubscriptionId`, `-Location`, `-RgTarget` *(req)*  
 - `-RgNetwork`, `-VnetName`, `-SubnetName` *(VNet required)*  
 - `-VmName` *(req)*, `-ComputerNameOverride`  
@@ -519,6 +646,12 @@ Check logs, remove problematic apps, stop services, and retry.
 - `-EnableTrustedLaunch` (default `$true`)  
 - `-AdminCredential`  
 - `-SkipBootFix`  
-- `-PostInstallScriptPath`, `-TimeZone` (default “W. Europe Standard Time”)  
+- `-PostInstallScriptPath`, `-TimeZone` (default "W. Europe Standard Time")  
 - `-MultiSessionHost` (sets `LicenseType="Windows_Client"`)  
 - `-ForceRestart`, `-ForceStop`, `-Force`
+
+### `Get-OldProfiles.ps1` (excerpt)
+- `-Days` *(default: 360)*  
+- `-OnlyDisabled`, `-ShowCandidatesOnly`, `-ExportCsv`  
+- `-CsvBasePath` *(default: ".\ProfileLogonReport")*  
+- `-ExcludePathPatterns` *(system profiles excluded by default)*
