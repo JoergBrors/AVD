@@ -369,6 +369,26 @@ Analyzes local Windows user profiles on AVD session hosts and maps them against 
 ) -ShowCandidatesOnly
 ```
 
+**Advanced analysis - Active users with registry load times:**
+```powershell
+# Get full report and analyze active users by registry load times
+$profileReport = .\Get-OldProfiles.ps1 -Days 30
+
+$profileReport | 
+    Where-Object { $_.AD_Enabled -eq $true } | 
+    Select-Object UserName,
+                  AD_Enabled,
+                  Reg_LastLoadTime,
+                  @{Name='DaysSinceLastLoad';Expression={ 
+                      if ($_.Reg_LastLoadTime) { 
+                          (New-TimeSpan -Start $_.Reg_LastLoadTime -End (Get-Date)).Days 
+                      } else { 
+                          $null 
+                      } 
+                  }} |
+    Sort-Object DaysSinceLastLoad -Descending
+```
+
 ### Registry Data Analysis
 The script reads detailed registry information from `HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\<SID>`:
 
