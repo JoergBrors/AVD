@@ -156,7 +156,6 @@ flowchart LR
   G --> H["SIG Version"]:::node
   H --> I["Deploy VM(s)"]:::node
 
-classDef node fill=#EEF6FF,stroke=#0366d6,stroke-width=1px;
 ```
 
 ### Deploy VM (EFI Fix & Post-Install)
