@@ -1,57 +1,102 @@
-# Azure Virtual Desktop – Golden Image Pipeline
+# Azure Virtual Desktop – Golden-Image Pipeline (Windows 11, SIG)
 
-Dieses Repository enthält zwei PowerShell-Skripte, um **Windows 11 AVD Golden Images** zu verwalten:
+This repository provides a **full image lifecycle for Windows 11 Azure Virtual Desktop (AVD)**:
 
-1. **Publish-GalleryVersionFromGoldenVM.ps1**  
-   → erstellt aus einer Golden-Image-VM eine **neue Azure Compute Gallery (SIG) Version** (non-destructive).
+1. **Golden-Image → Azure Compute Gallery (SIG) Version**
+2. **SIG Version → VM Deployment (Trusted Launch, Secure Boot, vTPM, optional EFI-Bootfix, Post-Install)**
 
-2. **Deploy-W11-FromSIG.ps1**  
-   → erstellt eine **VM aus einer SIG-Version**, inkl. Trusted Launch, vTPM, EFI-Bootfix und optionalen Post-Install-Schritten.
-
----
-
-## 📋 Features
-
-- 🖼 **Image Lifecycle**: Golden VM → Sysprep → Managed Image → SIG-Version  
-- 🔒 **Trusted Launch / Secure Boot / vTPM** Unterstützung  
-- ⚡ **Accelerated Networking** (falls unterstützt)  
-- 🛠 **EFI-Bootfix** via RunCommand (optional)  
-- 🧹 Automatisches Aufräumen von Staging-Ressourcen  
-- 📜 Erweiterte Optionen: Post-Install-Skripte, TimeZone-Setzung, Multi-Session Host Lizenzierung  
+The pipeline is **non-destructive**: the Golden-Image VM remains untouched (snapshot-based).
 
 ---
 
-## 🛠 Voraussetzungen
-
-- Windows PowerShell 5.1 oder PowerShell 7.x  
-- Module: `Az.Accounts`, `Az.Compute`, `Az.Network`, `Az.Resources`  
-- Berechtigungen:  
-  - VM Contributor / Reader auf Source-RG  
-  - Contributor auf Staging-RG  
-  - Compute Gallery Contributor auf Gallery-RG  
-  - Network Contributor für VNet/Subnet  
+## 📑 Table of Contents
+- Goals & Overview
+- Repository Structure
+- Supported Scenarios
+- Prerequisites
+- RBAC Roles & Permissions
+- Module Installation
+- Quickstart – End-to-End
+- Architecture & Flows (Mermaid)
+- Script 1: Publish-GalleryVersionFromGoldenVM.ps1  
+  Purpose, Parameters, Examples, Outputs, Cleanup, Edge-Cases
+- Script 2: Deploy-W11-FromSIG.ps1  
+  PSScriptInfo, Purpose, Parameters, Examples, EFI-Bootfix, Post-Install, Multi-Session
+- Naming & Tagging Conventions
+- Operations & AVD Integration (VMSS/Hostpool)
+- Troubleshooting
+- Validation Checklists
+- CI/CD Integration (Azure DevOps / GitHub Actions)
+- Security & Compliance
+- Cost Notes
+- Versioning & Release Notes
+- FAQ
+- License & Credits
 
 ---
 
-## 🔄 Workflow Übersicht
+## 🎯 Goals & Overview
+- Automated, reproducible image lifecycle for Windows 11 AVD
+- Non-destructive: Golden-Image stays untouched (snapshot staging)
+- Supports Trusted Launch / Gen2 / vTPM / Secure Boot
+- Efficient replication into Azure Compute Gallery (SIG) with configurable Storage-Tier & ReplicaCount
+- Fast VM deployment from SIG versions, incl. optional EFI bootloader repair
 
-```mermaid
-flowchart LR
-    A[Golden VM] -->|Snapshot| B[Staging VM]
-    B -->|Sysprep| C[Managed Image]
-    C --> D[SIG Version]
-    D --> E[Deployment von VMs]
+---
+
+## 📂 Repository Structure
+```
+.
+├─ Publish-GalleryVersionFromGoldenVM.ps1   # Golden VM → Managed Image → SIG Version
+└─ Deploy-W11-FromSIG.ps1                   # SIG Version → VM (Trusted Launch, Post-Install, EFI-Fix)
 ```
 
 ---
 
-## 📑 Skript 1: Publish-GalleryVersionFromGoldenVM.ps1
+## 💡 Supported Scenarios
+- Creation of consistent AVD session hosts from validated Windows 11 images
+- Rollout of new SIG versions across multiple regions
+- Deployment of test/pilot VMs with Post-Install automation (scripts, timezone)
+- Image maintenance: fast, safe iteration without breaking the Golden-Image
 
-### Zweck
-Erstellt **non-destructive** eine neue SIG-Version aus einer bestehenden Golden-Image-VM.
+---
 
-### Beispiel
+## 🔧 Prerequisites
+- Windows PowerShell 5.1 or PowerShell 7.x
+- Az modules: `Az.Accounts`, `Az.Compute`, `Az.Network`, `Az.Resources`
+- Golden-Image VM: Windows, Azure VM Agent installed
+- Existing VNet/Subnet for staging VM (no Public IP required)
+- Azure Compute Gallery (SIG) exists or will be created interactively/automatically
 
+---
+
+## 🔑 RBAC Roles & Permissions
+
+| Scope                  | Recommended Role(s)         | Purpose                                           |
+|-------------------------|-----------------------------|---------------------------------------------------|
+| Source RG (Golden)     | Reader (minimum)            | Read OS disk, create snapshot                     |
+| Staging RG             | Virtual Machine Contributor | Create Staging VM, NIC, Disk, Snapshot, Managed Image |
+| Gallery RG             | Compute Gallery Contributor | Create/read image definitions and versions        |
+| Network (VNet/Subnet)  | Network Contributor         | Create NIC, assign subnet                         |
+
+**Best practice:** use Service Principals with least privilege; secrets/certs in Key Vault.
+
+---
+
+## 📥 Module Installation
+```powershell
+# Once, as Administrator
+Install-Module Az -Scope AllUsers -Repository PSGallery -Force
+
+# Or specific modules:
+Install-Module Az.Accounts,Az.Compute,Az.Network,Az.Resources -Scope AllUsers -Force
+```
+
+---
+
+## 🚀 Quickstart – End-to-End
+
+### 1. Golden-Image → SIG Version
 ```powershell
 .\Publish-GalleryVersionFromGoldenVM.ps1 `
   -SubscriptionId "00000000-0000-0000-0000-000000000000" `
@@ -61,95 +106,60 @@ Erstellt **non-destructive** eine neue SIG-Version aus einer bestehenden Golden-
   -VnetName "vnet-staging" -VnetRg "RG-Network" -SubnetName "snet-staging" `
   -ImageVersion "2025.08.18" `
   -TargetRegions @("westeurope","northeurope") -ReplicaCount 2 `
-  -StorageAccountType "Standard_LRS" -CleanUp
+  -StorageAccountType "Standard_LRS" `
+  -CleanUp
 ```
 
-### Parameter (Auswahl)
-
-| Parameter               | Beschreibung                                                                 |
-|--------------------------|-------------------------------------------------------------------------------|
-| `-SourceVmName`         | Name der Golden-Image-VM                                                     |
-| `-SourceVmRg`           | Resource Group der Golden-Image-VM                                           |
-| `-StagingRg`            | Resource Group für temporäre Staging-Ressourcen                              |
-| `-ImageVersion`         | Neue Image-Version (z. B. `2025.08.18` oder `1.0.42`)                        |
-| `-TargetRegions`        | Liste von Regionen, in die repliziert wird                                   |
-| `-ReplicaCount`         | Anzahl Replikate pro Region                                                  |
-| `-CleanUp`              | Entfernt Staging-Ressourcen nach erfolgreicher Image-Erstellung              |
-
----
-
-## 📑 Skript 2: Deploy-W11-FromSIG.ps1
-
-### Zweck
-Erstellt eine VM aus einer bestehenden SIG-Version, inkl. Trusted Launch und optionalem EFI-Bootfix.
-
-### Beispiele
-
-#### Nicht-interaktiv
+### 2. SIG Version → VM
 ```powershell
 $cred = Get-Credential
 .\Deploy-W11-FromSIG.ps1 `
-  -SubscriptionId "..." -Location "westeurope" -RgTarget "RG-Prod" `
-  -VnetName "vnet1" -SubnetName "snet1" `
+  -SubscriptionId "00000000-0000-0000-0000-000000000000" `
+  -Location "westeurope" `
+  -RgTarget "RG-Prod" -VnetName "vnet1" -SubnetName "snet1" `
   -VmName "W11-APP-01" `
   -GalleryName "sig-prod" -GalleryResourceGroup "RG-Gallery" `
-  -ImageDefinitionName "W11-AVD" -ImageVersionName "1.2.0" `
-  -VmSize "Standard_D8ds_v5" `
-  -AdminCredential $cred -Tags @{Project="Demo"} -Force
+  -ImageDefinitionName "W11-AVD" -ImageVersionName "2025.08.18" `
+  -VmSize "Standard_D8ds_v5" -AdminCredential $cred -Force
 ```
-
-#### Interaktiv (SIG/Definition/Version wählen)
-```powershell
-.\Deploy-W11-FromSIG.ps1 `
-  -SubscriptionId "..." -Location "westeurope" `
-  -RgTarget "RG-Prod" -VnetName "vnet1" -SubnetName "snet1" `
-  -VmName "W11-INT-01"
-```
-
-#### Mit Post-Install Script und Restart
-```powershell
-$cred = Get-Credential
-.\Deploy-W11-FromSIG.ps1 `
-  -SubscriptionId "..." -Location "westeurope" -RgTarget "RG-Prod" `
-  -VnetName "vnet1" -SubnetName "snet1" `
-  -VmName "W11-CUSTOM01" -AdminCredential $cred `
-  -PostInstallScriptPath "C:\scripts\setup.ps1" -ForceRestart -Force
-```
-
-### Parameter (Auswahl)
-
-| Parameter                   | Beschreibung                                                                 |
-|------------------------------|-------------------------------------------------------------------------------|
-| `-VmName`                   | Name der zu erstellenden VM                                                 |
-| `-GalleryName`              | Name der Shared Image Gallery                                               |
-| `-ImageDefinitionName`      | Name der Image Definition in der Gallery                                    |
-| `-ImageVersionName`         | Version des Images (z. B. `1.2.0`)                                          |
-| `-EnableTrustedLaunch`      | Aktiviert SecureBoot & vTPM (Standard: aktiv)                               |
-| `-SkipBootFix`              | Überspringt den EFI-Bootfix                                                 |
-| `-PostInstallScriptPath`    | Lokales PowerShell-Skript, das nach Deployment ausgeführt wird               |
-| `-TimeZone`                 | Zeitzone setzen (z. B. `"W. Europe Standard Time"`)                         |
-| `-MultiSessionHost`         | Setzt Lizenztyp auf `Windows_Client` (für AVD Multi-Session)                |
-| `-ForceRestart` / `-ForceStop` | Startet oder stoppt die VM nach Deployment automatisch                     |
 
 ---
 
-## ✅ Best Practices
+## 🏗 Architecture & Flows (Mermaid)
 
-- Golden-Image-VM **vorher bereinigen**: Updates, keine Pending Reboots, keine Benutzerprofile.  
-- **AppX/Provisioned Packages** entfernen, die Sysprep blockieren können.  
-- Namenskonventionen beachten (≤15 Zeichen, gültige NetBIOS).  
-- Mit `-ExcludeFromLatest` nur getestete Images produktiv verwenden.  
+### Full Process
+```mermaid
+flowchart LR
+  A[Golden VM (Windows 11)] --> B(Snapshot OS Disk)
+  B --> C(Staging OS Disk)
+  C --> D[Staging VM (Gen2/TrustedLaunch same as source)]
+  D -->|RunCommand| E[Sysprep /generalize /oobe /shutdown /mode:vm]
+  E --> F[VM deallocate + generalized]
+  F --> G[Managed Image (generalized)]
+  G --> H[SIG Image Version (Replica, Tier, Regions)]
+  H --> I[Deploy VM(s) from SIG]
+```
+
+### Deploy-VM (EFI-Fix & Post-Install)
+```mermaid
+sequenceDiagram
+  participant User
+  participant Script as Deploy-W11-FromSIG.ps1
+  participant Azure as Azure Control Plane
+  participant VM as Target VM
+  User->>Script: Parameters (SIG, Version, VNet/Subnet, Size, Credentials)
+  Script->>Azure: Create NIC, VM (Trusted Launch, UEFI, Boot Diagnostics)
+  Azure-->>Script: VM created
+  Script->>VM: RunCommand - EFI bcdboot fix (optional)
+  VM-->>Script: Output/logs
+  Script->>VM: RunCommand - Set-TimeZone, PostInstall (optional)
+  VM-->>Script: Output/logs
+  Script-->>User: Summary, optional Restart/Deallocate
+```
 
 ---
 
-## 📜 Lizenz
-
-[MIT License](https://opensource.org/licenses/MIT) © 2025 Jörg Brors
-
----
-
-## 🔗 Links
-
-- [Azure Shared Image Gallery](https://learn.microsoft.com/azure/virtual-machines/windows/shared-images)  
-- [Trusted Launch](https://learn.microsoft.com/azure/virtual-machines/trusted-launch)  
-- [Azure Virtual Desktop](https://learn.microsoft.com/azure/virtual-desktop/)  
+## 📜 License & Credits
+- License: [MIT](https://opensource.org/licenses/MIT)
+- © 2025 Jörg Brors – Scripts & Documentation
+- With assistance/review from AI assistants
