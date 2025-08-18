@@ -176,9 +176,6 @@ sequenceDiagram
   S-->>U: Summary<br/>(Restart/Deallocate)
 ```
 
-> If Mermaid fails to render on GitHub, ensure the code block is fenced like:<br>
-> <code>\`\`\`mermaid<br>...diagram...<br>\`\`\`</code>
-
 ---
 
 ## Script 1: Publish-GalleryVersionFromGoldenVM.ps1
