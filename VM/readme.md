@@ -147,31 +147,34 @@ $cred = Get-Credential
 ### End-to-End Process
 ```mermaid
 flowchart LR
-  A["Golden VM (Windows 11)"] --> B["Snapshot OS Disk"]
-  B --> C["Staging OS Disk"]
-  C --> D["Staging VM (Gen2/Trusted Launch same as source)"]
-  D -->|RunCommand| E["Sysprep /generalize /oobe /shutdown /mode:vm"]
-  E --> F["VM deallocate + generalized"]
-  F --> G["Managed Image (generalized)"]
-  G --> H["SIG Image Version (Replica, Tier, Regions)"]
-  H --> I["Deploy VM(s) from SIG"]
+  A["Golden VM"]:::node --> B["Snapshot"]:::node
+  B --> C["Staging Disk"]:::node
+  C --> D["Staging VM"]:::node
+  D -->|RunCommand| E["Sysprep<br/>/generalize /oobe /shutdown"]:::node
+  E --> F["Deallocate"]:::node
+  F --> G["Managed Image"]:::node
+  G --> H["SIG Version"]:::node
+  H --> I["Deploy VM(s)"]:::node
+
+classDef node fill=#EEF6FF,stroke=#0366d6,stroke-width=1px;
 ```
 
 ### Deploy VM (EFI Fix & Post-Install)
 ```mermaid
 sequenceDiagram
-  participant User
-  participant Script as Deploy-W11-FromSIG.ps1
-  participant Azure as Azure Control Plane
-  participant VM as Target VM
-  User->>Script: Parameters (SIG, Version, VNet/Subnet, Size, Credentials)
-  Script->>Azure: Create NIC & VM (Trusted Launch, UEFI, Boot Diagnostics)
-  Azure-->>Script: VM created
-  Script->>VM: RunCommand — EFI bcdboot fix (optional)
-  VM-->>Script: Output/logs
-  Script->>VM: RunCommand — Set-TimeZone, Post-Install (optional)
-  VM-->>Script: Output/logs
-  Script-->>User: Summary, optional Restart/Deallocate
+  participant U as User
+  participant S as Deploy-W11.ps1
+  participant A as Azure Control Plane
+  participant V as Target VM
+
+  U->>S: Parameters<br/>(SIG, Version,<br/>VNet/Subnet, Size)
+  S->>A: Create NIC & VM<br/>(Trusted Launch, BootDiag)
+  A-->>S: VM created
+  S->>V: RunCommand EFI fix
+  V-->>S: Logs
+  S->>V: RunCommand Post-Install<br/>(TimeZone, etc.)
+  V-->>S: Logs
+  S-->>U: Summary<br/>(Restart/Deallocate)
 ```
 
 > If Mermaid fails to render on GitHub, ensure the code block is fenced like:<br>
