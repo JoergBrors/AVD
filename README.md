@@ -39,7 +39,7 @@ AVD/
 ## 📖 Dokumentation
 
 - [VM/readme.md](./VM/readme.md) – Detaillierte Infos zu den PowerShell-Skripten
-- [Projektdefinition (Markdown)](./README_EN_full.md) – Ausführliche AVD Projektbeschreibung inkl. Architekturdiagrammen
+- [Projektdefinition (Markdown)](./readme.md) – Ausführliche AVD Projektbeschreibung inkl. Architekturdiagrammen
 
 ## 🤝 Contribution
 
