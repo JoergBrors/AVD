@@ -147,14 +147,14 @@ $cred = Get-Credential
 ### End-to-End Process
 ```mermaid
 flowchart LR
-  A[Golden VM (Windows 11)] --> B[Snapshot OS Disk]
-  B --> C[Staging OS Disk]
-  C --> D[Staging VM (Gen2/Trusted Launch same as source)]
-  D -->|RunCommand| E[Sysprep /generalize /oobe /shutdown /mode:vm]
-  E --> F[VM deallocate + generalized]
-  F --> G[Managed Image (generalized)]
-  G --> H[SIG Image Version (Replica, Tier, Regions)]
-  H --> I[Deploy VM(s) from SIG]
+  A["Golden VM (Windows 11)"] --> B["Snapshot OS Disk"]
+  B --> C["Staging OS Disk"]
+  C --> D["Staging VM (Gen2/Trusted Launch same as source)"]
+  D -->|RunCommand| E["Sysprep /generalize /oobe /shutdown /mode:vm"]
+  E --> F["VM deallocate + generalized"]
+  F --> G["Managed Image (generalized)"]
+  G --> H["SIG Image Version (Replica, Tier, Regions)"]
+  H --> I["Deploy VM(s) from SIG"]
 ```
 
 ### Deploy VM (EFI Fix & Post-Install)
