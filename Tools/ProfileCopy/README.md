@@ -9,6 +9,11 @@ Ein .NET Windows Forms Tool zum Sichern und Wiederherstellen von QGIS-Profilen �
 - **Automatische QGIS-Beendigung**: Optional vor dem Restore
 - **Lokale Sicherung**: Erstellt automatisch Backup vor Restore
 - **Konfigurierbar**: Verwendung von `host.local` für umgebungsspezifische Einstellungen
+- **📊 Fortschrittsdialog**: Animierte Progress-Anzeige für alle Operationen
+- **⚡ Asynchrone Verarbeitung**: Threading für responsive UI auch bei großen Operationen
+- **❌ Abbrechen**: Möglichkeit, laufende Operationen zu stoppen
+- **🎛️ Multi-Szenarien**: Verschiedene Konfigurationen pro Dropdown-Auswahl
+- **⚠️ Backup-Prozess-Kill**: Optional Prozesse vor Backup beenden (mit Warnung)
 
 ## Konfiguration
 
@@ -21,13 +26,17 @@ Das Tool verwendet eine `host.local` Datei für lokale Konfiguration, die nicht 
 # Fileserver Konfiguration
 DEFAULT_SHARE=\\\\SERVER\\Freigabe\\QGISProfiles
 
-# Optional: Weitere lokale Anpassungen
-# BACKUP_RETENTION_DAYS=30
-# AUTO_BACKUP_ENABLED=true
+# Szenario-System mit Backup-Prozess-Kontrolle
+ACTIVE_SCENARIO=QGIS_Default
+APPLICATION_TITLE=QGIS Profile Backup & Restore Tool
+PROCESS_KILL_DELAY_MS=2000
+SHOW_KILL_WARNING=true
 
-# Debug-Einstellungen
-# DEBUG_MODE=false
-# LOG_LEVEL=Info
+[QGIS_Default]
+SOURCE_PATH=%APPDATA%\QGIS\QGIS3\profiles
+TARGET_SHARE=\\\\SERVER\\Freigabe\\QGISProfiles
+PROCESS_NAMES=qgis-bin,qgis,qgis-ltr-bin,qgis-ltr
+SCENARIO_TITLE=QGIS Standard Profile
 ```
 
 ## Verwendung

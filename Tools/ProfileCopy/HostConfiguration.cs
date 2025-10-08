@@ -1,18 +1,22 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace QGISProfileTool
 {
     public class HostConfiguration
     {
         private readonly Dictionary<string, string> _settings;
+        private readonly Dictionary<string, Dictionary<string, string>> _scenarios;
         private static HostConfiguration _instance;
         private static readonly object _lock = new object();
 
         private HostConfiguration()
         {
             _settings = new Dictionary<string, string>();
+            _scenarios = new Dictionary<string, Dictionary<string, string>>();
             LoadConfiguration();
         }
 
@@ -37,6 +41,8 @@ namespace QGISProfileTool
             string configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "host.local");
             
             // Setze Standardwerte
+            _settings["ACTIVE_SCENARIO"] = "QGIS_Default";
+            _settings["APPLICATION_TITLE"] = "QGIS Profile Backup & Restore Tool";
             _settings["DEFAULT_SHARE"] = @"\\SERVER\Freigabe\QGISProfiles";
             _settings["DEBUG_MODE"] = "false";
             _settings["LOG_LEVEL"] = "Info";
@@ -47,17 +53,45 @@ namespace QGISProfileTool
             {
                 try
                 {
-                    foreach (string line in File.ReadAllLines(configPath))
+                    string[] lines = File.ReadAllLines(configPath);
+                    string currentSection = "";
+                    Dictionary<string, string>? currentScenario = null;
+
+                    foreach (string line in lines)
                     {
-                        if (string.IsNullOrWhiteSpace(line) || line.TrimStart().StartsWith("#"))
+                        string trimmedLine = line.Trim();
+                        
+                        // Ignoriere Kommentare und leere Zeilen
+                        if (string.IsNullOrWhiteSpace(trimmedLine) || trimmedLine.StartsWith("#"))
                             continue;
 
-                        var parts = line.Split('=', 2);
+                        // Prüfe auf Sektion [SectionName]
+                        var sectionMatch = Regex.Match(trimmedLine, @"^\[(.+)\]$");
+                        if (sectionMatch.Success)
+                        {
+                            currentSection = sectionMatch.Groups[1].Value;
+                            currentScenario = new Dictionary<string, string>();
+                            _scenarios[currentSection] = currentScenario;
+                            continue;
+                        }
+
+                        // Prüfe auf Key=Value
+                        var parts = trimmedLine.Split('=', 2);
                         if (parts.Length == 2)
                         {
                             string key = parts[0].Trim();
-                            string value = parts[1].Trim();
-                            _settings[key] = value;
+                            string value = ExpandEnvironmentVariables(parts[1].Trim());
+
+                            if (currentScenario != null)
+                            {
+                                // Füge zu aktueller Sektion hinzu
+                                currentScenario[key] = value;
+                            }
+                            else
+                            {
+                                // Füge zu Hauptkonfiguration hinzu
+                                _settings[key] = value;
+                            }
                         }
                     }
                 }
@@ -70,9 +104,24 @@ namespace QGISProfileTool
             }
         }
 
+        private string ExpandEnvironmentVariables(string value)
+        {
+            // Erweitere Umgebungsvariablen wie %APPDATA%, %USERNAME%
+            return Environment.ExpandEnvironmentVariables(value);
+        }
+
         public string GetSetting(string key, string defaultValue = "")
         {
-            return _settings.TryGetValue(key, out string value) ? value : defaultValue;
+            return _settings.TryGetValue(key, out string? value) ? value : defaultValue;
+        }
+
+        public string GetScenarioSetting(string scenarioName, string key, string defaultValue = "")
+        {
+            if (_scenarios.TryGetValue(scenarioName, out Dictionary<string, string>? scenario))
+            {
+                return scenario.TryGetValue(key, out string? value) ? value : defaultValue;
+            }
+            return defaultValue;
         }
 
         public bool GetBoolSetting(string key, bool defaultValue = false)
@@ -87,8 +136,38 @@ namespace QGISProfileTool
             return int.TryParse(value, out int result) ? result : defaultValue;
         }
 
-        // Convenience Properties
-        public string DefaultShare => GetSetting("DEFAULT_SHARE");
+        public string[] GetScenarioProcessNames(string scenarioName)
+        {
+            string processNames = GetScenarioSetting(scenarioName, "PROCESS_NAMES", "qgis-bin,qgis");
+            return processNames.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                             .Select(p => p.Trim())
+                             .ToArray();
+        }
+
+        public string[] GetAvailableScenarios()
+        {
+            return _scenarios.Keys.ToArray();
+        }
+
+        // Aktives Szenario Properties
+        public string ActiveScenario => GetSetting("ACTIVE_SCENARIO", "QGIS_Default");
+        public string ApplicationTitle => GetSetting("APPLICATION_TITLE", "QGIS Profile Backup & Restore Tool");
+        
+        public string ActiveSourcePath => GetScenarioSetting(ActiveScenario, "SOURCE_PATH", 
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QGIS", "QGIS3", "profiles"));
+        
+        public string ActiveTargetShare => GetScenarioSetting(ActiveScenario, "TARGET_SHARE", @"\\SERVER\Freigabe\QGISProfiles");
+        
+        public string[] ActiveProcessNames => GetScenarioProcessNames(ActiveScenario);
+        
+        public string ActiveScenarioTitle => GetScenarioSetting(ActiveScenario, "SCENARIO_TITLE", "Default Scenario");
+
+        // Sicherheitseinstellungen
+        public int ProcessKillDelayMs => GetIntSetting("PROCESS_KILL_DELAY_MS", 2000);
+        public bool ShowKillWarning => GetBoolSetting("SHOW_KILL_WARNING", true);
+
+        // Legacy Properties für Rückwärtskompatibilität
+        public string DefaultShare => ActiveTargetShare;
         public bool DebugMode => GetBoolSetting("DEBUG_MODE");
         public string LogLevel => GetSetting("LOG_LEVEL");
         public int BackupRetentionDays => GetIntSetting("BACKUP_RETENTION_DAYS", 30);
