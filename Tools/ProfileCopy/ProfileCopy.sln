@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QGISProfileTool", "QGISProfileTool.csproj", "{3767FA61-856E-0265-CA6B-AD7082AF1EF9}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{3767FA61-856E-0265-CA6B-AD7082AF1EF9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3767FA61-856E-0265-CA6B-AD7082AF1EF9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3767FA61-856E-0265-CA6B-AD7082AF1EF9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3767FA61-856E-0265-CA6B-AD7082AF1EF9}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {271D2E1B-0F4E-40BC-B263-164F75F03B3B}
+	EndGlobalSection
+EndGlobal

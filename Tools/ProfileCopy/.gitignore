@@ -1,0 +1,56 @@
+# .NET Core
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.docstates
+*.dll
+*.pdb
+.vs/
+.vscode/
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+build/
+[Bb]in/
+[Oo]bj/
+publish/
+
+# MSTest test results
+TestResults/
+
+# NuGet Packages
+*.nupkg
+packages/
+.nuget/
+
+# Visual Studio
+*.sln.docstates
+.vs/
+
+# Local configuration files (host.local should not be synced)
+host.local
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.idea/
+*.swp
+*.swo
+*~
