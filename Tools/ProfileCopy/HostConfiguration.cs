@@ -154,6 +154,14 @@ namespace QGISProfileTool
             return _scenarios.Keys.ToArray();
         }
 
+        public void SetActiveScenario(string scenarioName)
+        {
+            if (_scenarios.ContainsKey(scenarioName))
+            {
+                _settings["ACTIVE_SCENARIO"] = scenarioName;
+            }
+        }
+
         // Aktives Szenario Properties
         public string ActiveScenario => GetSetting("ACTIVE_SCENARIO", "QGIS_Default");
         public string ApplicationTitle => GetSetting("APPLICATION_TITLE", "QGIS Profile Backup & Restore Tool");

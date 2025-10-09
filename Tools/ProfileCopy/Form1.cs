@@ -719,6 +719,9 @@ public partial class Form1 : Form
             
             _logger.LogInfo("Szenario gewechselt", $"Neues Szenario: {selectedScenario}");
             
+            // Setze das neue aktive Szenario in der Konfiguration
+            _config.SetActiveScenario(selectedScenario);
+            
             // Aktualisiere die Pfade basierend auf dem gewählten Szenario
             var txtShare = this.Controls["txtShare"] as TextBox;
             var txtLocal = this.Controls["txtLocal"] as TextBox;
@@ -744,8 +747,16 @@ public partial class Form1 : Form
                 txtLog.AppendText($"Prozesse: {string.Join(", ", processes)}\r\n");
             }
             
+            // Hole das aktualisierte ZIP_POSTFIX für das neue Szenario
+            string zipPostfix = _config.GetScenarioZipPostfix(selectedScenario);
+            
             _logger.LogInfo("Szenario-Konfiguration geladen", 
-                $"Quelle: {sourcePath} | Ziel: {targetShare} | Prozesse: {string.Join(", ", processes)}");
+                $"Quelle: {sourcePath} | Ziel: {targetShare} | Prozesse: {string.Join(", ", processes)} | ZIP_POSTFIX: {zipPostfix}");
+            
+            if (txtLog != null)
+            {
+                txtLog.AppendText($"ZIP_POSTFIX für {selectedScenario}: {zipPostfix}\r\n");
+            }
             
             // Aktualisiere auch die Backup-Liste für das neue Szenario
             var btnRefresh = this.Controls["btnRefresh"] as Button;
