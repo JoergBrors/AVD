@@ -1,6 +1,12 @@
-# QGIS Profile Tool v2.0 - Neue Features
+# QGIS Profile Tool v2.0 - Neue Features + Szenario-Grid-Filterung
 
 ## 🎯 **Hauptverbesserungen**
+
+### 🗂️ **NEU: Szenario-Spalte und intelligente Filterung** 
+- **Szenario-Spalte im Grid**: Zeigt das Szenario jeder Backup-Datei
+- **Intelligente Filterung**: Standardmäßig nur kompatible Backups anzeigen
+- **ZIP_POSTFIX Integration**: Automatische Szenario-Erkennung aus Dateinamen
+- **Visuelle Kompatibilitäts-Anzeige**: Rote Markierung für inkompatible Backups
 
 ### 📊 **Fortschrittsdialog mit Animation**
 - **Animierte Spinner**: Rotierender Unicode-Spinner für visuelle Aktivitätsanzeige

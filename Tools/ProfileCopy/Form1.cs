@@ -233,6 +233,13 @@ public partial class Form1 : Form
 
         grid.Columns.Add(new DataGridViewTextBoxColumn
         {
+            Name = "Szenario",
+            HeaderText = "Szenario",
+            FillWeight = 15
+        });
+
+        grid.Columns.Add(new DataGridViewTextBoxColumn
+        {
             Name = "Version",
             HeaderText = "Version",
             FillWeight = 20
@@ -499,7 +506,7 @@ public partial class Form1 : Form
             foreach (var item in items.OrderByDescending(x => x.Zeitstempel))
             {
                 string zeitString = item.Zeitstempel.ToString("yyyy-MM-dd HH:mm");
-                grid.Rows.Add(item.Datei, item.Version, zeitString, item.GroesseBytes, item.FullName);
+                grid.Rows.Add(item.Datei, item.Scenario, item.Version, zeitString, item.GroesseBytes, item.FullName);
             }
             
             grid.ResumeLayout();
@@ -576,32 +583,75 @@ public partial class Form1 : Form
         }
 
         var files = Directory.GetFiles(userFolder, "*.zip");
+        string activeZipPostfix = _config.GetScenarioZipPostfix(_config.ActiveScenario);
         
         foreach (string file in files)
         {
             var fileInfo = new FileInfo(file);
-            var match = System.Text.RegularExpressions.Regex.Match(fileInfo.Name, @"^QGISProfiles_(.+?)_(\d{8}-\d{4})\.zip$");
             
+            // Neues Format: QGISProfiles_Szenario_Version_Zeitstempel.zip
+            var newMatch = System.Text.RegularExpressions.Regex.Match(
+                fileInfo.Name, @"^QGISProfiles_(.+?)_(.+?)_(\d{8}-\d{4})\.zip$");
+            
+            // Altes Format: QGISProfiles_Version_Zeitstempel.zip (für Rückwärtskompatibilität)
+            var oldMatch = System.Text.RegularExpressions.Regex.Match(
+                fileInfo.Name, @"^QGISProfiles_(.+?)_(\d{8}-\d{4})\.zip$");
+
+            string scenario = "";
             string version = "(unbekannt)";
             DateTime zeitstempel = fileInfo.LastWriteTime;
-            
-            if (match.Success)
+            bool isValidFormat = false;
+
+            if (newMatch.Success)
             {
-                version = match.Groups[1].Value;
-                if (DateTime.TryParseExact(match.Groups[2].Value, "yyyyMMdd-HHmm", null, System.Globalization.DateTimeStyles.None, out DateTime dt))
+                scenario = newMatch.Groups[1].Value;
+                version = newMatch.Groups[2].Value;
+                isValidFormat = true;
+                if (DateTime.TryParseExact(newMatch.Groups[3].Value, "yyyyMMdd-HHmm", null, 
+                    System.Globalization.DateTimeStyles.None, out DateTime dt))
+                {
+                    zeitstempel = dt;
+                }
+            }
+            else if (oldMatch.Success)
+            {
+                // Altes Format - als Default-Szenario behandeln
+                scenario = "QGIS_Default";
+                version = oldMatch.Groups[1].Value;
+                isValidFormat = true;
+                if (DateTime.TryParseExact(oldMatch.Groups[2].Value, "yyyyMMdd-HHmm", null, 
+                    System.Globalization.DateTimeStyles.None, out DateTime dt))
                 {
                     zeitstempel = dt;
                 }
             }
 
-            results.Add(new BackupItem
+            // Standardmäßig nur Backups des aktuellen Szenarios anzeigen
+            // Ausnahme: Wenn ShowAllBackups aktiviert ist, alle anzeigen
+            bool shouldDisplay = _config.ShowAllBackups || scenario == activeZipPostfix || (!isValidFormat && _config.ShowAllBackups);
+            
+            if (shouldDisplay)
             {
-                FullName = file,
-                Datei = fileInfo.Name,
-                Version = version,
-                Zeitstempel = zeitstempel,
-                GroesseBytes = fileInfo.Length
-            });
+                bool isCompatible = scenario == activeZipPostfix || !isValidFormat;
+                string warningMessage = "";
+                
+                if (!isCompatible)
+                {
+                    warningMessage = $"⚠️ Gehört zu Szenario '{scenario}' (aktuell: {_config.ActiveScenario})";
+                }
+
+                results.Add(new BackupItem
+                {
+                    FullName = file,
+                    Datei = fileInfo.Name,
+                    Version = version,
+                    Scenario = scenario,
+                    Zeitstempel = zeitstempel,
+                    GroesseBytes = fileInfo.Length,
+                    IsCompatibleWithCurrentScenario = isCompatible,
+                    WarningMessage = warningMessage
+                });
+            }
         }
 
         return results;
@@ -785,7 +835,7 @@ public partial class Form1 : Form
                     displayName = "⚠️ " + displayName;
                 }
                 
-                var rowIndex = grid.Rows.Add(displayName, item.Version, zeitString, item.GroesseMB, item.FullName);
+                var rowIndex = grid.Rows.Add(displayName, item.Scenario, item.Version, zeitString, item.GroesseMB, item.FullName);
                 
                 // Färbe inkompatible Zeilen rot ein
                 if (!item.IsCompatibleWithCurrentScenario)
