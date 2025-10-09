@@ -61,12 +61,15 @@ _logger.LogError("Operation fehlgeschlagen", ex, "Detaillierte Fehlermeldung");
 ```
 
 ### 📁 Log File Structure
+Log-Dateien werden im temporären Verzeichnis gespeichert:
 ```
-Logs/
-├── QGISProfileTool_20240101.log
-├── QGISProfileTool_20240102.log
-└── QGISProfileTool_20240103.log
+%TEMP%/QGISProfileTool_Logs/
+├── QGISProfileTool_20241009.log
+├── QGISProfileTool_20241010.log
+└── QGISProfileTool_20241011.log
 ```
+
+**Typischer Pfad**: `C:\Users\[Username]\AppData\Local\Temp\QGISProfileTool_Logs\`
 
 ### 📝 Log Entry Format
 ```
@@ -104,7 +107,9 @@ Logs/
 ### 🎯 Next Steps für Benutzer
 1. **Deployment**: Kopiere `publish/QGISProfileTool.exe` und `publish/host.local` zum Zielrechner
 2. **Configuration**: Anpassung der `host.local` für spezifische Umgebung
-3. **Testing**: Teste alle Funktionen und überprüfe Log-Dateien im `Logs` Ordner
-4. **Monitoring**: Regelmäßige Überprüfung der Log-Dateien für Probleme oder Performance-Analyse
+3. **Testing**: Teste alle Funktionen und überprüfe Log-Dateien in `%TEMP%\QGISProfileTool_Logs\`
+4. **Monitoring**: Log-Dateien befinden sich im temporären Verzeichnis des Benutzers
+   - **Windows**: `C:\Users\[Username]\AppData\Local\Temp\QGISProfileTool_Logs\`
+   - **Automatische Bereinigung**: Log-Dateien älter als 30 Tage werden automatisch gelöscht
 
 Das umfassende Logging-System ermöglicht eine vollständige Nachverfolgung aller Anwendungsaktivitäten und unterstützt sowohl Debugging als auch Audit-Anforderungen in produktiven Umgebungen.
