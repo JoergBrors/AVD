@@ -9,6 +9,7 @@ public partial class Form1 : Form
     private readonly string _localProfile;
     private readonly HostConfiguration _config;
     private readonly BackupService _backupService;
+    private readonly FileLogger _logger;
 
     public Form1()
     {
@@ -17,8 +18,14 @@ public partial class Form1 : Form
         _userName = Environment.UserName;
         _localProfile = _config.ActiveSourcePath;
         _backupService = new BackupService();
+        _logger = FileLogger.Instance;
+        
+        _logger.LogInfo("Anwendung gestartet", $"Benutzer: {_userName} | Aktives Szenario: {_config.ActiveScenario}");
+        _logger.CleanupOldLogs();
         
         InitializeUI();
+        
+        _logger.LogInfo("UI initialisiert", $"Log-Datei: {_logger.GetLogFilePath()}");
     }
 
     private void InitializeUI()
@@ -141,12 +148,23 @@ public partial class Form1 : Form
         };
         InitializeGridColumns(grid);
 
+        // Show All Backups Checkbox (über den anderen Checkboxen)
+        var chkShowAllBackups = new CheckBox
+        {
+            Name = "chkShowAllBackups",
+            Text = "🔍 Alle Backups anzeigen (inkl. andere Szenarien)",
+            Location = new Point(20, 450),
+            Size = new Size(350, 20),
+            Checked = _config.ShowAllBackups
+        };
+        chkShowAllBackups.CheckedChanged += ChkShowAllBackups_CheckedChanged;
+
         // Checkboxen
         var chkKillForBackup = new CheckBox
         {
             Name = "chkKillForBackup",
             Text = "Prozesse vor Backup beenden (⚠️ Datenverlust möglich)",
-            Location = new Point(20, 455),
+            Location = new Point(20, 475),
             Checked = false,
             Size = new Size(370, 23),
             ForeColor = Color.DarkRed
@@ -156,7 +174,7 @@ public partial class Form1 : Form
         {
             Name = "chkKillQGIS",
             Text = "Prozesse vor Restore beenden",
-            Location = new Point(20, 480),
+            Location = new Point(20, 500),
             Checked = true,
             Size = new Size(220, 23)
         };
@@ -165,7 +183,7 @@ public partial class Form1 : Form
         {
             Name = "chkLocalSnap",
             Text = "Vorher lokale Sicherung erstellen",
-            Location = new Point(250, 480),
+            Location = new Point(250, 500),
             Checked = true,
             Size = new Size(230, 23)
         };
@@ -175,17 +193,17 @@ public partial class Form1 : Form
         {
             Name = "btnRestore",
             Text = "Ausgewählte Sicherung wiederherstellen",
-            Location = new Point(490, 475),
+            Location = new Point(490, 495),
             Size = new Size(270, 30)
         };
         btnRestore.Click += BtnRestore_Click;
 
-        // Log TextBox
+        // Log TextBox (weiter nach unten verschoben)
         var txtLog = new TextBox
         {
             Name = "txtLog",
-            Location = new Point(20, 520),
-            Size = new Size(740, 90),
+            Location = new Point(20, 535),
+            Size = new Size(740, 130),
             Multiline = true,
             ReadOnly = true,
             ScrollBars = ScrollBars.Vertical
@@ -195,7 +213,8 @@ public partial class Form1 : Form
         this.Controls.AddRange(new Control[] {
             lblScenario, cmbScenario, lblScenarioInfo,
             lblShare, txtShare, lblLocal, txtLocal, lblVersion, txtVersion,
-            btnBackup, btnRefresh, grid, chkKillForBackup, chkKillQGIS, chkLocalSnap, btnRestore, txtLog
+            btnBackup, btnRefresh, grid, chkKillForBackup, chkKillQGIS, chkLocalSnap, btnRestore, 
+            chkShowAllBackups, txtLog
         });
     }
 
@@ -253,6 +272,10 @@ public partial class Form1 : Form
         {
             bool killProcesses = chkKillForBackup.Checked;
             
+            _logger.LogSession("BACKUP", "GESTARTET");
+            _logger.LogInfo("Backup-Vorgang initiiert", 
+                $"Quelle: {txtLocal.Text} | Ziel: {txtShare.Text} | Version: {txtVersion.Text} | Prozesse beenden: {killProcesses}");
+            
             // Warnung anzeigen wenn Prozesse beendet werden sollen
             if (killProcesses && _config.ShowKillWarning)
             {
@@ -276,10 +299,12 @@ public partial class Form1 : Form
                 if (result != DialogResult.Yes)
                 {
                     txtLog.AppendText("Backup abgebrochen - Benutzer hat Prozess-Beendigung abgelehnt.\r\n");
+                    _logger.LogWarning("Backup abgebrochen", "Benutzer lehnte Prozess-Beendigung ab");
                     return;
                 }
                 
                 txtLog.AppendText($"⚠️ WARNUNG: Benutzer bestätigte zwangsweise Prozess-Beendigung vor Backup (Delay: {_config.ProcessKillDelayMs}ms).\r\n");
+                _logger.LogWarning("Prozess-Beendigung bestätigt", $"Delay: {_config.ProcessKillDelayMs}ms | Prozesse: {string.Join(", ", _config.ActiveProcessNames)}");
             }
 
             await DoBackupAsync(txtLocal.Text, txtShare.Text, txtVersion.Text, killProcesses, txtLog);
@@ -304,29 +329,105 @@ public partial class Form1 : Form
 
     private async void BtnRestore_Click(object? sender, EventArgs e)
     {
-        var grid = this.Controls["grid"] as DataGridView;
-        var txtLocal = this.Controls["txtLocal"] as TextBox;
-        var chkKillQGIS = this.Controls["chkKillQGIS"] as CheckBox;
-        var chkLocalSnap = this.Controls["chkLocalSnap"] as CheckBox;
         var txtLog = this.Controls["txtLog"] as TextBox;
-
-        if (grid == null || txtLocal == null || chkKillQGIS == null || chkLocalSnap == null || txtLog == null)
-            return;
-
-        if (grid.SelectedRows.Count == 0)
+        
+        try
         {
-            MessageBox.Show("Bitte eine Sicherung auswählen.", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
-        }
+            var grid = this.Controls["grid"] as DataGridView;
+            var txtLocal = this.Controls["txtLocal"] as TextBox;
+            var chkKillQGIS = this.Controls["chkKillQGIS"] as CheckBox;
+            var chkLocalSnap = this.Controls["chkLocalSnap"] as CheckBox;
 
-        string? zipPath = grid.SelectedRows[0].Cells["FullNameHidden"].Value?.ToString();
-        if (string.IsNullOrEmpty(zipPath))
+            if (grid == null || txtLocal == null || chkKillQGIS == null || chkLocalSnap == null || txtLog == null)
+            {
+                txtLog?.AppendText("FEHLER: UI-Elemente nicht gefunden.\r\n");
+                return;
+            }
+
+            if (grid.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Bitte eine Sicherung auswählen.", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            txtLog.AppendText($"Restore gestartet - Verarbeite ausgewählte Zeile...\r\n");
+
+            // Sichere Grid-Zugriffe mit Exception Handling
+            string? zipPath = null;
+            string? fileName = "";
+            
+            try
+            {
+                zipPath = grid.SelectedRows[0].Cells["FullNameHidden"]?.Value?.ToString();
+                fileName = grid.SelectedRows[0].Cells["Datei"]?.Value?.ToString() ?? "";
+                txtLog.AppendText($"Ausgewählte Datei: '{fileName}', Pfad: '{zipPath}'\r\n");
+            }
+            catch (Exception ex)
+            {
+                txtLog.AppendText($"FEHLER beim Grid-Zugriff: {ex.Message}\r\n");
+                MessageBox.Show($"Fehler beim Lesen der Grid-Daten: {ex.Message}", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+            
+            if (string.IsNullOrEmpty(zipPath))
+            {
+                txtLog.AppendText("FEHLER: Backup-Pfad ist leer.\r\n");
+                MessageBox.Show("Pfad fehlt.", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            // Prüfe ob die gewählte Datei inkompatibel ist (rot eingefärbt)
+            bool isIncompatible = false;
+            try
+            {
+                isIncompatible = grid.SelectedRows[0].DefaultCellStyle.BackColor == System.Drawing.Color.LightCoral;
+                txtLog.AppendText($"Kompatibilitätsprüfung: {(isIncompatible ? "INKOMPATIBEL" : "KOMPATIBEL")}\r\n");
+            }
+            catch (Exception ex)
+            {
+                txtLog.AppendText($"Warnung bei Kompatibilitätsprüfung: {ex.Message}\r\n");
+            }
+
+            if (isIncompatible)
+            {
+                var result = MessageBox.Show(
+                    "⚠️ WARNUNG: Inkompatibles Backup ausgewählt!\n\n" +
+                    $"Die gewählte Datei '{fileName}' gehört zu einem anderen Szenario.\n" +
+                    "Das Restore könnte zu unerwarteten Problemen führen.\n\n" +
+                    "Möchten Sie trotzdem fortfahren?\n\n" +
+                    "💡 EMPFEHLUNG: Wählen Sie ein kompatibles Backup oder wechseln Sie zum passenden Szenario.",
+                    "⚠️ Inkompatibles Backup - Bestätigung erforderlich",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2);
+
+                if (result != DialogResult.Yes)
+                {
+                    txtLog.AppendText($"Restore abgebrochen - Inkompatibles Backup '{fileName}' nicht bestätigt.\r\n");
+                    return;
+                }
+                
+                txtLog.AppendText($"⚠️ WARNUNG: Benutzer bestätigte Restore von inkompatiblem Backup '{fileName}'.\r\n");
+            }
+
+            txtLog.AppendText($"Starte Restore-Prozess für '{fileName}'...\r\n");
+            _logger.LogSession("RESTORE", "GESTARTET");
+            _logger.LogInfo("Restore initiiert", $"Datei: {fileName} | Pfad: {zipPath} | Ziel: {txtLocal.Text}");
+            
+            await DoRestoreAsync(zipPath, txtLocal.Text, chkKillQGIS.Checked, chkLocalSnap.Checked, txtLog);
+        }
+        catch (Exception ex)
         {
-            MessageBox.Show("Pfad fehlt.", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            return;
+            string errorMsg = $"KRITISCHER FEHLER in BtnRestore_Click: {ex.Message}\r\nStackTrace: {ex.StackTrace}";
+            txtLog?.AppendText($"{errorMsg}\r\n");
+            _logger.LogError("Kritischer Restore-Fehler", ex, $"UI-Fehler in BtnRestore_Click");
+            
+            MessageBox.Show(
+                $"Ein unerwarteter Fehler ist aufgetreten:\n\n{ex.Message}\n\nDetails wurden ins Log geschrieben.", 
+                "Kritischer Fehler", 
+                MessageBoxButtons.OK, 
+                MessageBoxIcon.Error);
         }
-
-        await DoRestoreAsync(zipPath, txtLocal.Text, chkKillQGIS.Checked, chkLocalSnap.Checked, txtLog);
     }
 
     protected override void OnShown(EventArgs e)
@@ -566,17 +667,23 @@ public partial class Form1 : Form
         {
             string selectedScenario = cmbScenario.SelectedItem.ToString()!;
             
+            _logger.LogInfo("Szenario gewechselt", $"Neues Szenario: {selectedScenario}");
+            
             // Aktualisiere die Pfade basierend auf dem gewählten Szenario
             var txtShare = this.Controls["txtShare"] as TextBox;
             var txtLocal = this.Controls["txtLocal"] as TextBox;
             var lblScenarioInfo = this.Controls["lblScenarioInfo"] as Label;
             var txtLog = this.Controls["txtLog"] as TextBox;
 
+            string sourcePath = _config.GetScenarioSetting(selectedScenario, "SOURCE_PATH", "");
+            string targetShare = _config.GetScenarioSetting(selectedScenario, "TARGET_SHARE", "");
+            string[] processes = _config.GetScenarioProcessNames(selectedScenario);
+
             if (txtShare != null)
-                txtShare.Text = _config.GetScenarioSetting(selectedScenario, "TARGET_SHARE", "");
+                txtShare.Text = targetShare;
                 
             if (txtLocal != null)
-                txtLocal.Text = _config.GetScenarioSetting(selectedScenario, "SOURCE_PATH", "");
+                txtLocal.Text = sourcePath;
                 
             if (lblScenarioInfo != null)
                 lblScenarioInfo.Text = _config.GetScenarioSetting(selectedScenario, "SCENARIO_TITLE", selectedScenario);
@@ -584,8 +691,11 @@ public partial class Form1 : Form
             if (txtLog != null)
             {
                 txtLog.AppendText($"Szenario gewechselt zu: {selectedScenario}\r\n");
-                txtLog.AppendText($"Prozesse: {string.Join(", ", _config.GetScenarioProcessNames(selectedScenario))}\r\n");
+                txtLog.AppendText($"Prozesse: {string.Join(", ", processes)}\r\n");
             }
+            
+            _logger.LogInfo("Szenario-Konfiguration geladen", 
+                $"Quelle: {sourcePath} | Ziel: {targetShare} | Prozesse: {string.Join(", ", processes)}");
             
             // Aktualisiere auch die Backup-Liste für das neue Szenario
             var btnRefresh = this.Controls["btnRefresh"] as Button;
@@ -593,11 +703,20 @@ public partial class Form1 : Form
         }
     }
 
+    private void ChkShowAllBackups_CheckedChanged(object? sender, EventArgs e)
+    {
+        // Liste automatisch aktualisieren wenn sich die Anzeige-Option ändert
+        var btnRefresh = this.Controls["btnRefresh"] as Button;
+        btnRefresh?.PerformClick();
+    }
+
     // Neue asynchrone Methoden mit Fortschrittsdialog
     private async Task DoBackupAsync(string localPath, string shareRoot, string version, bool killProcesses, TextBox logBox)
     {
         try
         {
+            _logger.LogOperation("BACKUP", "START", $"Quelle: {localPath} | Ziel: {shareRoot} | Version: {version}");
+            
             string result = await ProgressForm.ShowProgressAsync(
                 this,
                 "Backup erstellen",
@@ -607,15 +726,23 @@ public partial class Form1 : Form
                 });
 
             logBox.AppendText($"Backup erfolgreich erstellt: {result}\r\n");
+            _logger.LogOperation("BACKUP", "ERFOLG", $"Datei erstellt: {result}");
+            _logger.LogSession("BACKUP", "BEENDET");
+            
             MessageBox.Show($"Backup erfolgreich: {result}", "Erfolg", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (OperationCanceledException)
         {
             logBox.AppendText("Backup abgebrochen.\r\n");
+            _logger.LogWarning("Backup abgebrochen", "Benutzer-Abbruch");
+            _logger.LogSession("BACKUP", "ABGEBROCHEN");
         }
         catch (Exception ex)
         {
             logBox.AppendText($"Backup-Fehler: {ex.Message}\r\n");
+            _logger.LogError("Backup-Fehler", ex, $"Pfad: {localPath} | Version: {version}");
+            _logger.LogSession("BACKUP", "FEHLERHAFT");
+            
             MessageBox.Show($"Fehler beim Backup: {ex.Message}", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
@@ -624,12 +751,24 @@ public partial class Form1 : Form
     {
         try
         {
+            // Prüfe ob "Alle Backups anzeigen" aktiviert ist
+            var chkShowAllBackups = this.Controls["chkShowAllBackups"] as CheckBox;
+            bool showAllBackups = chkShowAllBackups?.Checked ?? false;
+            
+            // Temporär die Einstellung überschreiben
+            var originalShowAll = _config.ShowAllBackups;
+            if (showAllBackups != originalShowAll)
+            {
+                // Hier würde normalerweise eine temporäre Override-Logik stehen
+                // Für Einfachheit verwenden wir den BackupService mit angepasster Logik
+            }
+
             var items = await ProgressForm.ShowProgressAsync(
                 this,
-                "Lade Backup-Liste",
+                showAllBackups ? "Lade alle Backups" : "Lade Backup-Liste",
                 async (progress, cancellationToken) =>
                 {
-                    return await _backupService.GetBackupsAsync(shareRoot, _config.ActiveScenario, progress, cancellationToken);
+                    return await _backupService.GetBackupsAsync(shareRoot, _config.ActiveScenario, progress, cancellationToken, showAllBackups);
                 });
 
             grid.SuspendLayout();
@@ -638,7 +777,22 @@ public partial class Form1 : Form
             foreach (var item in items.OrderByDescending(x => x.Zeitstempel))
             {
                 string zeitString = item.Zeitstempel.ToString("yyyy-MM-dd HH:mm");
-                grid.Rows.Add(item.Datei, item.Version, zeitString, item.GroesseMB, item.FullName);
+                string displayName = item.Datei;
+                
+                // Füge Warnung hinzu wenn nicht kompatibel
+                if (!item.IsCompatibleWithCurrentScenario && !string.IsNullOrEmpty(item.WarningMessage))
+                {
+                    displayName = "⚠️ " + displayName;
+                }
+                
+                var rowIndex = grid.Rows.Add(displayName, item.Version, zeitString, item.GroesseMB, item.FullName);
+                
+                // Färbe inkompatible Zeilen rot ein
+                if (!item.IsCompatibleWithCurrentScenario)
+                {
+                    grid.Rows[rowIndex].DefaultCellStyle.BackColor = System.Drawing.Color.LightCoral;
+                    grid.Rows[rowIndex].DefaultCellStyle.ForeColor = System.Drawing.Color.DarkRed;
+                }
             }
             
             grid.ResumeLayout();
@@ -666,6 +820,8 @@ public partial class Form1 : Form
     {
         try
         {
+            _logger.LogOperation("RESTORE", "START", $"ZIP: {zipPath} | Ziel: {localPath} | Prozesse beenden: {killQGIS} | Backup: {makeLocalBackup}");
+            
             await ProgressForm.ShowProgressAsync(
                 this,
                 "Profile wiederherstellen",
@@ -676,15 +832,23 @@ public partial class Form1 : Form
                 });
 
             logBox.AppendText("Restore erfolgreich abgeschlossen.\r\n");
+            _logger.LogOperation("RESTORE", "ERFOLG", $"Profile wiederhergestellt nach: {localPath}");
+            _logger.LogSession("RESTORE", "BEENDET");
+            
             MessageBox.Show("Restore erfolgreich.", "Erfolg", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (OperationCanceledException)
         {
             logBox.AppendText("Restore abgebrochen.\r\n");
+            _logger.LogWarning("Restore abgebrochen", "Benutzer-Abbruch");
+            _logger.LogSession("RESTORE", "ABGEBROCHEN");
         }
         catch (Exception ex)
         {
             logBox.AppendText($"Restore-Fehler: {ex.Message}\r\n");
+            _logger.LogError("Restore-Fehler", ex, $"ZIP: {zipPath} | Ziel: {localPath}");
+            _logger.LogSession("RESTORE", "FEHLERHAFT");
+            
             MessageBox.Show($"Fehler beim Restore: {ex.Message}", "Fehler", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
@@ -698,6 +862,8 @@ public class BackupItem
     public string Scenario { get; set; } = "";
     public DateTime Zeitstempel { get; set; }
     public long GroesseBytes { get; set; }
+    public bool IsCompatibleWithCurrentScenario { get; set; } = true;
+    public string WarningMessage { get; set; } = "";
     
     public string GroesseMB => (GroesseBytes / (1024.0 * 1024.0)).ToString("F2");
 }

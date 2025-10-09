@@ -144,6 +144,11 @@ namespace QGISProfileTool
                              .ToArray();
         }
 
+        public string GetScenarioZipPostfix(string scenarioName)
+        {
+            return GetScenarioSetting(scenarioName, "ZIP_POSTFIX", scenarioName);
+        }
+
         public string[] GetAvailableScenarios()
         {
             return _scenarios.Keys.ToArray();
@@ -161,10 +166,13 @@ namespace QGISProfileTool
         public string[] ActiveProcessNames => GetScenarioProcessNames(ActiveScenario);
         
         public string ActiveScenarioTitle => GetScenarioSetting(ActiveScenario, "SCENARIO_TITLE", "Default Scenario");
+        
+        public string ActiveZipPostfix => GetScenarioZipPostfix(ActiveScenario);
 
         // Sicherheitseinstellungen
         public int ProcessKillDelayMs => GetIntSetting("PROCESS_KILL_DELAY_MS", 2000);
         public bool ShowKillWarning => GetBoolSetting("SHOW_KILL_WARNING", true);
+        public bool ShowAllBackups => GetBoolSetting("SHOW_ALL_BACKUPS", false);
 
         // Legacy Properties für Rückwärtskompatibilität
         public string DefaultShare => ActiveTargetShare;
