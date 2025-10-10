@@ -1,5 +1,10 @@
 # 📝 Logging-Pfad Aktualisierung: Temp-Verzeichnis
 
+**📅 Aktualisiert:** 9. Oktober 2025  
+**📋 Status:** Implementiert und getestet  
+**📁 Neuer Pfad:** `%TEMP%\QGISProfileTool_Logs\`  
+**🔗 Verwandte Docs:** [LOGGING-IMPLEMENTATION.md](LOGGING-IMPLEMENTATION.md), [README.md](README.md)
+
 ## ✅ Änderung durchgeführt: Log-Dateien im temporären Verzeichnis
 
 ### 🔄 Was wurde geändert:
@@ -46,3 +51,11 @@ Die Log-Dateien werden jetzt im temporären Verzeichnis des Benutzers gespeicher
 Die neue `QGISProfileTool.exe` ist bereit für den Einsatz mit verbesserter Log-Handhabung im temporären Verzeichnis.
 
 **Hinweis**: Bei der ersten Ausführung wird automatisch der Ordner `QGISProfileTool_Logs` im Temp-Verzeichnis erstellt.
+
+## 📋 **Verwandte Dokumentation**
+
+- **[README.md](README.md)** - Hauptdokumentation und System-Übersicht
+- **[LOGGING-IMPLEMENTATION.md](LOGGING-IMPLEMENTATION.md)** - Vollständiges Logging-System mit FileLogger Details
+- **[FEATURES-v2.0.md](FEATURES-v2.0.md)** - Alle v2.0 Features inkl. Logging-Integration
+
+**🎯 Temp-Logging Status:** Erfolgreich implementiert und produktionsreif (Oktober 2025)

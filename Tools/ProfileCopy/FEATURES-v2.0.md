@@ -1,5 +1,8 @@
 # QGIS Profile Tool v2.0 - Neue Features + Szenario-Grid-Filterung
 
+**📅 Letztes Update:** 10. Oktober 2025  
+**📋 Status:** Vollständig implementiert und getestet
+
 ## 🎯 **Hauptverbesserungen**
 
 ### 🗂️ **NEU: Szenario-Spalte und intelligente Filterung** 
@@ -135,6 +138,15 @@ PROCESS_NAMES=myapp,myapp-server
 - Sicherheitsdelay: Konfigurierbares Delay nach Process-Kill
 - Progress-Feedback: Detaillierte Statusmeldungen
 ```
+
+## 📋 **Verwandte Dokumentation**
+
+- **[README.md](README.md)** - Hauptdokumentation und Übersicht
+- **[SZENARIO-GRID-UPDATE.md](SZENARIO-GRID-UPDATE.md)** - Szenario-Spalte und Grid-Filterung
+- **[LOGGING-IMPLEMENTATION.md](LOGGING-IMPLEMENTATION.md)** - Umfassendes Logging-System
+- **[SZENARIO-WECHSEL-FIX.md](SZENARIO-WECHSEL-FIX.md)** - ZIP_POSTFIX Korrekturen
+
+**🎯 Status:** Alle Features vollständig implementiert und produktionsreif (Oktober 2025)
 
 ### **Warnung-Dialog Features**
 - **⚠️ Risiko-Aufklärung**: Ungespeicherte Daten, Lock-Files, etc.

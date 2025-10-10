@@ -1,19 +1,22 @@
-# QGIS Profile Backup & Restore Tool
+# QGIS Profile Backup & Restore Tool v2.0
 
 Ein .NET Windows Forms Tool zum Sichern und Wiederherstellen von QGIS-Profilen über Netzwerk-Freigaben.
 
+**🎯 Letztes Update:** 10. Oktober 2025  
+**📦 Aktuelle Version:** v2.0 mit vollständigem Logging und Szenario-Management
+
 ## Features
 
-- **Backup erstellen**: Erstellt ZIP-Archive der lokalen QGIS-Profile mit Versionierung
-- **Profile wiederherstellen**: Stellt gesicherte Profile wieder her
-- **Automatische QGIS-Beendigung**: Optional vor dem Restore
-- **Lokale Sicherung**: Erstellt automatisch Backup vor Restore
-- **Konfigurierbar**: Verwendung von `host.local` für umgebungsspezifische Einstellungen
-- **📊 Fortschrittsdialog**: Animierte Progress-Anzeige für alle Operationen
+- **🗂️ Szenario-Management**: Multi-Szenario-Support mit ZIP_POSTFIX-Integration
+- **📊 Intelligente Grid-Anzeige**: Szenario-Spalte mit automatischer Filterung
+- **💾 Backup erstellen**: ZIP-Archive mit automatischer Szenario-Kennzeichnung
+- **🔄 Profile wiederherstellen**: Mit Kompatibilitätsprüfung und Warnungen
+- **🔧 Vollständiges Logging**: Thread-safe Logs im Temp-Verzeichnis
+- **� Fortschrittsdialog**: Animierte Progress-Anzeige für alle Operationen
 - **⚡ Asynchrone Verarbeitung**: Threading für responsive UI auch bei großen Operationen
 - **❌ Abbrechen**: Möglichkeit, laufende Operationen zu stoppen
-- **🎛️ Multi-Szenarien**: Verschiedene Konfigurationen pro Dropdown-Auswahl
-- **⚠️ Backup-Prozess-Kill**: Optional Prozesse vor Backup beenden (mit Warnung)
+- **⚠️ Prozess-Management**: Optional QGIS-Prozesse vor Backup/Restore beenden
+- **🎯 Automatische Aktualisierung**: Grid und Filter reagieren auf Szenario-Wechsel
 
 ## Konfiguration
 
@@ -89,6 +92,27 @@ Die erstellte `QGISProfileTool.exe` (ca. 120 MB) ist eigenständig und benötigt
 ## Struktur
 
 - `Form1.cs` - Hauptformular mit UI und Geschäftslogik
-- `HostConfiguration.cs` - Konfigurationsmanagement für host.local
+- `BackupService.cs` - Asynchrone Backup/Restore-Operationen
+- `FileLogger.cs` - Thread-safe Logging-System
+- `ProgressForm.cs` - Fortschrittsdialog mit Animationen
+- `HostConfiguration.cs` - Multi-Szenario-Konfigurationsmanagement
 - `host.local` - Lokale Konfigurationsdatei (nicht versioniert)
-- `.gitignore` - Git-Ignore-Regeln für .NET und lokale Dateien
+
+## 📚 Dokumentation
+
+Die folgenden Dokumentationsdateien enthalten detaillierte Informationen zu spezifischen Features:
+
+### 🎯 Feature-Dokumentation
+- **[FEATURES-v2.0.md](FEATURES-v2.0.md)** - Vollständige Übersicht aller v2.0 Features
+- **[SZENARIO-GRID-UPDATE.md](SZENARIO-GRID-UPDATE.md)** - Szenario-Spalte und intelligente Filterung
+- **[SZENARIO-WECHSEL-FIX.md](SZENARIO-WECHSEL-FIX.md)** - ZIP_POSTFIX und Grid-Filter Korrekturen
+
+### 🔧 Technische Dokumentation
+- **[LOGGING-IMPLEMENTATION.md](LOGGING-IMPLEMENTATION.md)** - Umfassendes Logging-System
+- **[TEMP-LOGGING-UPDATE.md](TEMP-LOGGING-UPDATE.md)** - Log-Dateien im Temp-Verzeichnis
+- **[DEBUG-RESTORE-CRASH.md](DEBUG-RESTORE-CRASH.md)** - Restore-Crash Debugging und Fixes
+
+### 🚀 Deployment
+- **[README-Deployment.md](README-Deployment.md)** - Installations- und Deployment-Anleitung
+
+Alle Dokumentationen sind auf dem neuesten Stand (Oktober 2025) und enthalten vollständige technische Details sowie Benutzeranleitungen.
